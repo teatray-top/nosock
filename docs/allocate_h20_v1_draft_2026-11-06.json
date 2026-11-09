@@ -1,0 +1,62 @@
+{
+ "version": "allocate-h20-v1-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_RUN",
+ "created_at_utc": "2026-11-06T11:55:00+00:00",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "purpose": "Connect the frozen 20-session prediction scores to a post-cost ledger: on the same fixed 20-session grid, variant A rebalances to target weight 1 and variant B to clip(H3/H1, 0, 1) using the stored predict-h20-v3 forecasts. Identical ledger mechanics, deposits, fills, fees, ticks, valuation and inter-grid cash handling for both. Descriptive comparison of two ledgers; the weight ratio is a heuristic proposed after viewing results, not an optimal allocation; no orders.",
+ "parents": {
+  "raw_prices": "2da39950164f07a0d76cd8ec000c48cc4d5f90000f6a811f2490796988a9f4eb (raw O/C in won; ledger prices and calendar)",
+  "predict_h20_v3_results": "343836850c3575254edf24d49d90bee3efe2b2ae6905b6f4aafa9e746a447546 (146 grid decisions: mu_hat_H3 and anchor_mu_loaded H1 per decision_session; loaded verbatim, never recomputed)",
+  "ladder_results": "2ec040ae239ed0936919d43126b382ea8a80e7e587d7cd5ce58addbeea325971 (R1 anchors for the ledger-mechanics regression check in daily full-weight mode)",
+  "allocate_v1_spec": "8d8c5946add95d1b4f1afcda23067beaaa41f824dcac727f5170da748f08bf7d (inherited mechanics: two-stage close-weight/open-quantity, integer fee 15/100000 on integer won notional, +/-5 tick, one daily row, deposit at each close after the trade)",
+  "spec": "this file once reviewed"
+ },
+ "weights": {
+  "decision_sessions": "the 146 grid decisions i = 3031 + 20k of predict-h20-v3 (2014-12-30 .. 2026-10-28); the pending block (decision 2026-10-28) trades normally and is marked to the cutoff",
+  "A_full": "w_i = 1 at every grid decision",
+  "B_ratio": "w_i = clip(H3_i / H1_i, 0, 1) with H3_i = stored mu_hat_H3 and H1_i = stored anchor_mu_loaded.H1 at decision i; both are 20-session simple-return means in the same unit; no daily h enters the weight",
+  "guard": "H1_i > 0 for all 146 decisions and both values finite; any violation aborts invalid_input before any ledger step (no fallback weight)",
+  "between_grid_decisions": "no trades; deposits accumulate as idle cash (yield 0) and are deployed at the next grid execution by both variants identically; weights are not recomputed off-grid"
+ },
+ "ledger_mechanics": {
+  "inherits": "allocate-v1 spec 8d8c5946 timeline, applied identically to A and B",
+  "period": "sessions from the first grid decision 2014-12-30 (index 3031) through the cutoff 2026-11-05 (index 5937): 2907 sessions, 2907 deposits of 10,000 won, 146 scheduled rebalances",
+  "timeline": "session i: if a weight is pending from the previous close (only when i-1 was a grid decision), observe raw O[i], compute W_open = cash + qty*O[i], target_qty = floor(w*W_open/O[i]), trade at O[i]+5 (buy) or O[i]-5 (sell) with fee floor(notional*15/100000) on integer won notional, cash cap incl. fee; then observe close, deposit 10,000, record the daily row; the first session has no trade; the last session executes nothing new",
+  "sell_rule": "target_qty < qty -> sell (qty - target_qty) at O-5 minus fee",
+  "buy_rule": "target_qty > qty -> buy min(target_qty - qty, largest affordable q incl. fee) at O+5",
+  "final_position": "mark remaining shares at the final raw close; no forced liquidation; report final cash, shares and marked equity separately",
+  "idle_cash_yield": 0,
+  "costs": "fees and ticks are booked in cash; turnover_won, tick_cost_won and fees_total_won reported as diagnostics only, never subtracted twice",
+  "pnl": "value - cumulative deposits; max drawdown on (value - deposits) with running peak from 0",
+  "exposure": "qty*C/value after the deposit; mean over the unique daily rows"
+ },
+ "outputs": {
+  "per_variant": ["pnl_won_after_costs", "pnl_pct_of_deposits", "max_dd_won", "exposure_avg", "buys", "sells", "fees_total_won", "tick_cost_won", "turnover_won", "qty_end", "final_cash", "final_value", "w_mean", "w_min", "decisions_w_below_1", "decisions_w_zero"],
+  "paired": ["B minus A of (value - deposits) at the period end", "min and max of the daily B minus A difference", "number of sessions where B held fewer shares than A", "yearly increments of (value - deposits) for A and B and their difference (descriptive, calendar year of the session)"],
+  "records": ["decision_records: decision_session, H3, H1, ratio, w_A, w_B, execution_session, open_observed", "trade_records (both variants): weight_decision_session, execution_session, side, qty, price, fee, cash_before/after, qty_before/after", "daily_records (both variants): session, cash, qty, value, deposits, pnl, exposure, pending_w"],
+  "envelope": "contract v3; ordered five parents; anchor artifact id of predict-h20-v3; units krw/shares/weight; assumptions and limitations",
+  "output_dir": "%USERPROFILE%\\Documents\\Codex\\2026-11-05\\x20-teatray-top-irc\\work\\allocate_h20_v1_20261106",
+  "overwrite": false,
+  "write": "single xb write with allow_nan=False; separate run log with hashes before/after, timeout, exit, wall, stdout/stderr"
+ },
+ "verification_required": [
+  "5-session hand fixture (flat prices) reproducing the allocate-v1 integer fee/tick arithmetic to the won",
+  "grid fixture (step 3): no trades between grid executions, idle cash accumulates and is deployed at the next grid; clip behaviour at ratio < 0 (w = 0, full sale), 0 < ratio < 1 (partial), ratio > 1 (w = 1); H1 <= 0 or non-finite aborts before any ledger step",
+  "mechanics regression on real data: the same ledger engine in daily full-weight mode (step 1, w = 1) must reproduce ladder R1 anchors on common / bull_2025 / crash_2026 to the won (pnl, buys, sells, max_dd, deposits, qty_end, final_value); this is the only real-data ledger computation allowed in selftest",
+  "perturbation: changing raw O/C strictly after session k leaves all trades and daily rows through k unchanged; weights depend only on stored predictions (changing a stored H3 at decision m changes trades only from execution m+1 onward)",
+  "anchor alignment: 146 stored decisions match the grid calendar (index, session, entry); H3/H1 finite; H1 > 0; rejection tests for duplicate, shifted, missing, non-finite and H1 <= 0",
+  "invariants: cash never negative, integer non-negative qty, self-financing cash change equals signed notional minus fee, equity change at execution equals tick loss plus fee",
+  "constant-price full payload; input validation (integer won, sorted unique sessions, array alignment)",
+  "real selftest: hashes, calendar, anchor metadata and the R1 mechanics regression only; no A/B ledger on real data before the approved run; bill reviews the final code hash"
+ ],
+ "resources": {"cpu_threads": 1, "external_timeout_seconds": 60, "experiments": 1, "ledgers": 2, "optimizer_calls": 0, "tuned_parameters": 0, "api_calls": 0, "orders": 0, "random_paths": 0},
+ "prohibited_in_this_run": ["choosing the ratio form, clip bounds, rebalance frequency or period after viewing results", "mixing daily h or any other series into the weight", "a third variant unless bill adds it to the scope", "live or paper orders", "calling a PnL or drawdown difference an optimal allocation or a live edge"],
+ "interpretation": "price-change PnL excluding dividends/distributions with frozen research costs (fee 0.015% floored per side, +/-5 won tick, zero tax, zero cash yield); all periods already viewed; the weight ratio was proposed after the H3 result; exploratory ledger comparison only",
+ "open_choices_for_bill": [
+  "period: full grid span 2014-12-30..2026-11-05 only (drafted) vs also a fresh-start sub-ledger from the first grid decision with entry >= 2024-04-01",
+  "yearly (value - deposits) increments as a descriptive table (drafted) or omit",
+  "whether to add a context ledger A_daily (daily full investment = R1 schedule) as a third, clearly labelled non-variant reference (not drafted; bill said two groups)",
+  "clip(H3/H1, 0, 1) (drafted, bill's proposal) vs clip at a declared cap below 1 (not recommended: new parameter)"
+ ]
+}

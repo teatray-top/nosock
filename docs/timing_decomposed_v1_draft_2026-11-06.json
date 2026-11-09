@@ -1,0 +1,32 @@
+{
+ "version": "timing-decomposed-v1-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_TRAINING_NO_RUN",
+ "created_at_utc": "2026-11-06T12:58:00+00:00",
+ "motivation": "In timing-lgbm-v1 the held feature was never used in any of the 2,400 trees, so cash and held predictions were identical for identical price features although the two targets differ exactly by the round-trip cost (z1 - z0 = (b(P) - s(P)) / P > 0). The policy therefore could not express the state-dependent cost of switching. This draft separates the learned common price component from the deterministic state cost difference.",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "identity": {
+  "targets": "z(i,0) = (s(Q) - b(P)) / P, z(i,1) = (s(Q) - s(P)) / P with P = O[i+1], Q = O[i+21], b(P) = P + 5 + F(P+5), s(P) = P - 5 - F(P-5), F(n) = floor(n x 15 / 100000)",
+ "exact_difference": "z(i,1) - z(i,0) = (b(P) - s(P)) / P = (10 + F(P+5) + F(P-5)) / P =: d(P); deterministic given P, independent of Q and of any feature",
+  "common_component": "g(i) := z(i,0); then z(i,1) = g(i) + d(P_i) exactly; both state targets carry the same learnable information g(i)"
+ },
+ "available_cost_approximation": {
+  "problem": "P = O[i+1] is unknown at the decision close i; using it in the decision would be leakage",
+  "proxy": "d_hat(i) = d(C_raw[i]) = (10 + F(C_raw[i] + 5) + F(C_raw[i] - 5)) / C_raw[i] using the raw close observed at close i",
+  "error": "d(P) - d(C) = 10 (1/P - 1/C) + (F terms)/P differences; for KODEX200 prices (20,000 .. 110,000 won) d is about 0.0004 .. 0.0008 and a 3% overnight gap changes it by about 0.00002; reported descriptively after the fact (audit only, never fed to decisions)",
+  "no_tuning": "d_hat is fully determined by the frozen fee and tick rules and the observed close; no parameter"
+ },
+ "model_M3": {
+  "learned_part": "one regression g_hat(i) for the common component only: target g(j) = z(j,0) per decision j, ONE training row per date (the held row is redundant under the identity), same five price features (logret5, logret20, logret60, ma200_distance, sd20), no held feature",
+  "learner": "frozen LightGBM parameters of timing-lgbm-v1 (b0c7e7b4) unchanged, so the only changed element versus M2 is the target/decision structure; a Ridge variant with the same structure is listed as a later rung, not run here",
+  "folds": "identical 12 execution-year folds and fit cutoffs (c = first entry index - 1; rows j = 199 .. c - 21); training rows total 49,970 = 99,940 / 2",
+  "decision_rule": "cash state: long iff g_hat(i) > 0 (buy minus wait), else wait; held state: hold iff g_hat(i) + d_hat(i) > 0 (hold minus sell), else sell; exact 0 keeps the current state",
+  "interpretation": "the model learns one number per date; the state only shifts the decision boundary by the known switching cost, so a sell requires the expected 20-session value to fall below minus the round-trip cost, not merely below zero",
+  "outputs_per_decision": "g_hat, d_hat, implied cash and held action values g_hat and g_hat + d_hat, actual held flag, action; d_hat computed from the raw close only"
+ },
+ "unchanged": ["ledger mechanics, deposits, integer costs, period 2014-12-30 .. 2026-11-05, one continuous account", "features definitions (five price features), fold cutoffs, maturity rule", "anchors: R1, M1 (Ridge), M2 (LightGBM) loaded from frozen results; primary comparison M3 - R1, secondary M3 - M2 (same learner, structure changed) and M3 - M1", "no threshold, horizon, feature or hyperparameter tuning; no new data"],
+ "expected_behaviour_not_promised": "relative to M2, sells should become rarer when |g_hat| is small because the held boundary moves by d_hat; whether this helps post-cost PnL is the empirical question; either direction is a legitimate outcome",
+ "verification_required": ["synthetic identity test z1 - z0 == d(P) exactly on integer prices incl. fee floors", "d_hat uses only C_raw[i]; perturbing O[i+1] changes the realized d(P) but never the decision", "decision-rule fixtures: g_hat in (-d_hat, 0) -> held holds, cash waits; g_hat < -d_hat -> sell; g_hat > 0 -> long; exact 0 keeps", "training matrix has one row per date and equals the cash rows of the two-row matrix", "inherited ledger, fold, purge, serialization/reload, manual tree traversal, existing-output and full-calendar guards", "real selftest: hashes, environment, calendar, fold counts, anchor metadata only"],
+ "resources": {"cpu_threads": 1, "external_timeout_seconds": 120, "fits": 12, "ledgers": 1, "api_calls": 0, "orders": 0},
+ "open_choices_for_bill": ["proxy price for d_hat: raw close C_raw[i] (drafted) vs previous open O[i]", "learner for M3: frozen LightGBM (drafted) vs Ridge, or both as two rungs", "whether to also report the realized d(P) - d_hat distribution in the result (audit-only) or omit"]
+}

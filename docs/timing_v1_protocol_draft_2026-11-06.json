@@ -1,0 +1,55 @@
+{
+ "version": "timing-v1-protocol-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_TRAINING_NO_RUN",
+ "created_at_utc": "2026-11-06T12:00:00+00:00",
+ "owner_directive": "2026-11-06 20:52 KST: learn when to buy and when to sell; not accumulate-and-hold",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "purpose": "A learned long/flat timing policy for KODEX200 evaluated as a post-cost ledger against accumulation, with a sealed test period and a pre-registered one-rung-at-a-time learner ladder. The question is whether a learned timing rule beats always-long after costs in won.",
+ "data": {
+  "adjusted_prices": "844b2789… adjusted C: features and labels (distribution-adjusted series)",
+  "raw_prices": "2da39950… raw O/C: ledger prices, integer won, calendar",
+  "state": "frozen state-vol-v1 recursion (lambda .94) reproduced as in predict-h20-v3 for the volatility features; h_ref pinned",
+  "span": "2002-10-14 .. 2026-11-05 (5938 sessions)"
+ },
+ "seal": {
+  "sealed_test": "all decisions with decision session >= 2024-04-01 (the common window used in earlier ledgers) are sealed: no feature, label, model, threshold or rule may be chosen or changed after looking at them; evaluated exactly once after bill approves the frozen code hash",
+  "development": "decisions <= 2024-03-29 only; development evaluation = yearly walk-forward 2015..2023",
+  "enforcement": "the development runner refuses to load sessions after 2024-03-29 unless the final run flag is set; the sealed evaluation writes a separate artifact; selftest never touches real data beyond hashes/calendar"
+ },
+ "walk_forward": {
+  "folds": "test year y in 2015..2023: train on all decisions whose label is fully matured before the first session of y (purge = horizon N), expanding window from 2003-08-01; no validation-set tuning; hyperparameters fixed in this document",
+  "refit": "one fit per (fold, horizon, learner); no seeds averaging; a single declared seed where the learner is stochastic",
+  "sealed_fit": "for the sealed evaluation: one fit on all matured decisions before 2024-04-01 per (horizon, learner), then apply daily through 2026-11-05 without refit (refit schedule is itself a design choice; frozen here as none)"
+ },
+ "features_at_close_i": ["log return over 1, 5, 20, 60, 120, 250 sessions (adjusted C)", "drawdown from the 250-session high of adjusted C", "C / MA50 - 1 and C / MA200 - 1 (strict trailing means incl. current close)", "realized 20-session standard deviation of daily log returns", "frozen EWMA second moment h_i and its cell v_i (h_i > h_ref)", "sessions since the last 60-session high (capped at 60)"],
+ "feature_rules": "past-only (closes through i); standardization uses training-fold statistics only; no cross-sectional or external data; feature set is fixed, no selection",
+ "labels": {
+  "horizons_N": [5, 20, 60],
+  "definition": "y_N(i) = 1 if O[i+1+N]/O[i+1] - 1 - c_rt > 0 else 0, where O is the raw open and c_rt is the declared round-trip cost in return units (fee 0.015% x 2 plus 2 ticks of 5 won relative to O[i+1]); the label answers: would being long from the next open for N sessions have beaten cash after costs",
+  "maturity": "a decision i can be used for training only when i + 1 + N <= training cutoff index",
+  "note": "this is a long/flat label; shorting is out of scope"
+ },
+ "policy": {
+  "decision": "at close i the model gives p_N(i) = P(y_N = 1 | features_i); action for the next open: long if p_N(i) > 0.5 else flat; threshold fixed at 0.5, never tuned",
+  "execution": "allocate-v1 mechanics: weight 1 (long) or 0 (flat) decided at close i, quantity computed after observing O[i+1], fills at O +/- 5 won, integer fee 15/100000 on integer won notional, deposit 10,000 won at each close, one daily row, no forced liquidation at the end",
+  "cash_when_flat": "all cash idle at zero yield; when long, all available cash is deployed (same as R1)",
+  "holding": "the policy re-decides every close; the horizon N defines the label, not a forced holding period"
+ },
+ "learner_ladder": [
+  {"rung": "M0", "model": "always long (R1 accumulation) and always flat (R0 cash) and MA200 in/out (R3) under identical mechanics", "role": "baselines, no fit"},
+  {"rung": "M1", "model": "L2 logistic regression on standardized features, C = 1.0 fixed, fit by numpy IRLS or sklearn LogisticRegression(lbfgs) if available", "role": "simplest learner first"},
+  {"rung": "M2", "model": "LightGBM binary classifier: num_leaves 7, max_depth 3, learning_rate 0.05, n_estimators 200, min_data_in_leaf 100, feature_fraction 1.0, bagging off, lambda_l2 1.0, seed 0, num_threads 2; fixed, no early stopping", "role": "only after M1 development results are recorded; identical folds/labels/policy; added as one element"}
+ ],
+ "evaluation": {
+  "primary": "development: per fold year 2015..2023 and pooled, post-cost ledger PnL (won), PnL % of deposits, max drawdown, exposure, trades, fees, ticks for each (horizon, learner) versus R1 / R0 / R3 under identical mechanics; the comparison that matters to the owner is PnL and drawdown in won vs R1",
+  "secondary": "classification diagnostics per fold: accuracy vs base rate, AUC (descriptive), share of long days; turnover",
+  "sealed": "the same table for 2024-04-01 .. 2026-11-05 computed once with the frozen models; reported with the development table side by side; no reinterpretation afterwards",
+  "exclusions": "no p-values treating days as independent; no threshold/feature/hyperparameter search; no seed selection; no comparison of label accuracy with PnL as if equivalent"
+ },
+ "pre_registration": "features, labels, horizons, learners, hyperparameters, folds, threshold, costs, baselines and the seal are fixed by this document's hash before any training; the code hash is reviewed by bill before the development run and again before the sealed run",
+ "resources": {"cpu_threads": 2, "external_timeout_seconds": 600, "fits": "development 9 folds x 3 horizons x 1 learner per rung (27 fits), sealed 3 fits per rung", "api_calls": 0, "orders": 0, "gpu": 0},
+ "risks_declared": ["single asset, about 5,700 usable decisions, heavily dependent labels: overfitting is the expected failure mode (the 60-session LightGBM model failed this way)", "a policy can look good in development and fail sealed; both tables are reported regardless", "label uses raw open-to-open net of declared costs; dividends excluded", "all development years were already viewed in earlier research; only the sealed window is untouched by model choices made today"],
+ "deliverables": ["timing_v1.py with selftest (synthetic labels/features/ledger, purge and seal enforcement tests, IRLS vs closed-form check on a tiny fixture)", "development artifact (M1), then M2 if agreed", "sealed artifact after bill approval", "owner report in won: timing policy vs accumulation, after costs, with drawdowns"],
+ "open_choices_for_bill": ["seal start 2024-04-01 (drafted) vs 2025-01-01", "horizons {5,20,60} (drafted) vs fewer", "sealed refit = none (drafted) vs yearly refit inside the seal", "whether R3 stays as a rule baseline", "M1 solver: numpy IRLS (no new dependency) vs sklearn if present"]
+}

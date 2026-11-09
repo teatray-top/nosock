@@ -1,0 +1,46 @@
+{
+ "max_open_trades": 2,
+ "stake_currency": "USDT",
+ "stake_amount": "unlimited",
+ "tradable_balance_ratio": 0.99,
+ "dry_run": true,
+ "dry_run_wallet": 1000,
+ "trading_mode": "spot",
+ "exchange": {
+  "name": "binance",
+  "key": "",
+  "secret": "",
+  "pair_whitelist": [
+   "DOGE/USDT",
+   "BAT/USDT",
+   "ARK/USDT",
+   "ADX/USDT",
+   "DUSK/USDT",
+   "EDU/USDT",
+   "CHZ/USDT",
+   "CKB/USDT",
+   "COTI/USDT",
+   "CTSI/USDT"
+  ],
+  "pair_blacklist": []
+ },
+ "pairlists": [
+  {
+   "method": "StaticPairList"
+  }
+ ],
+ "entry_pricing": {
+  "price_side": "same",
+  "use_order_book": false,
+  "price_last_balance": 0.0
+ },
+ "exit_pricing": {
+  "price_side": "same",
+  "use_order_book": false
+ },
+ "dataformat_ohlcv": "feather",
+ "bot_name": "dobby_backtest_only_kr_top10",
+ "internals": {
+  "process_throttle_secs": 5
+ }
+}

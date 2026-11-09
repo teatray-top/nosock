@@ -1,0 +1,28 @@
+{
+ "version": "timing-cadence-v1-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_FIT_NO_RUN",
+ "created_at_utc": "2026-11-06T13:30:00+00:00",
+ "hypothesis": "The teacher target values a position opened at the next open and liquidated at the 21st open (N = 20) with no intervening trades, but the realized policy re-decides every close, so realized holding periods (median 4 sessions in M2/M3) never match the horizon the predictions were trained for. Test: make the decision cadence equal to the horizon while keeping predictions, costs and ledger frozen.",
+ "single_changed_axis": "decision cadence only: daily re-decision -> decisions at the fixed 20-session grid i_k = 3031 + 20k (k = 0..145), identical to the predict-h20 grid; everything else (stored M2 predictions p, cost band half_cost, integer ledger, deposits, period) unchanged",
+ "formula": {
+  "decision_sessions": "i_k = 3031 + 20k for k = 0..145 (2014-12-30 .. 2026-10-28); the stored M2 prediction exists for every i_k",
+  "values": "half_cost_k = d(C_raw[i_k]) / 2, v0 = p_{i_k} - half_cost_k, v1 = p_{i_k} + half_cost_k; score = v1 if actual qty > 0 at close i_k else v0",
+  "action": "score > 0 -> weight 1 from open i_k + 1 until the next grid execution open i_k + 21; score < 0 -> weight 0 over the same span; exactly 0 -> keep the current state; no decisions at off-grid closes",
+  "endpoint_consistency": "a block decided at close i_k is held (or kept flat) until open i_k + 21, which is exactly the teacher's liquidation endpoint Q = O[i_k + 21]; the next decision at close i_k + 20 then re-evaluates with p_{i_k + 20}",
+  "cash_between_grid_opens": "daily deposits accumulate as idle cash and are deployed only at grid executions (both variants identically); no maintenance buys between grid points",
+  "last_block": "the pending block (decision 2026-10-28, execution 2026-10-29) executes normally and is marked to the cutoff; no decision after 2026-10-28"
+ },
+ "information_timing": "at close i_k: stored p_{i_k} (frozen M2, state independent), raw close C_raw[i_k], actual M4 held state; execution at open i_k + 1 after observing O; no future open, no outcome, no label",
+ "variants": {
+  "M4_grid_cadence": "the policy above",
+  "R1g_grid_cadence_always_long": "weight 1 at every grid close with the same idle-cash mechanics (identical to allocate-h20 variant A semantics); needed because idle cash between grid opens confounds a comparison with the daily R1",
+  "anchors_loaded": "M2 daily (d9556ca9), M3 (3046a590), R1 daily and M1 (78176801) for descriptive comparison only"
+ },
+ "comparisons": {"primary": "M4 minus R1g terminal post-cost PnL, continuous annual increments, drawdown, exposure, trades, costs", "secondary": "M4 minus M2 (same predictions, cadence changed) and M4 minus M3 (same predictions and cost band, cadence changed); M4 minus daily R1 descriptive with the idle-cash caveat", "block_diagnostic": "for each of the 145 matured blocks: teacher label z(i_k, state) vs the realized block return of the executed action (both per share, same path), descriptive only, never fed back"},
+ "counts": {"new_fits": 0, "native_predictions": 0, "stored_predictions_reused": 146, "ledgers": 2, "grid_decisions": 146, "execution_opportunities_per_ledger": 146, "daily_rows_per_ledger": 2907, "deposits_won": 29070000},
+ "resources": {"cpu_threads": 1, "external_timeout_seconds": 60, "api_calls": 0, "orders": 0},
+ "verification": ["synthetic grid fixtures: decisions only at grid closes, idle cash accumulates and is deployed at the next grid open, hold spans exactly 20 sessions, last pending block executes", "cost-band values and sign rule identical to timing-costband-reuse-v1 (reuse its tested functions)", "stored-prediction preflight identical to timing-costband-reuse-v1 (hashes, 2400 trees without held splits, 146 traversals for the grid subset)", "future-price perturbation leaves grid decisions unchanged; posthoc block diagnostic computed after the ledger", "existing-output pre-rejection, full-calendar check, anchors loaded only"],
+ "not_in_scope": ["any threshold, cadence or horizon tuning (20 is the frozen teacher horizon)", "new fits or label changes", "a daily-decision policy with a holding lock (asymmetric variant) unless bill prefers it as the single axis instead"],
+ "expected_outcome_statement": "not declared; if cadence matching does not close the gap to always-long, the mismatch hypothesis loses support for this model; if it does, the gain still includes the idle-cash and exposure effects and is not timing skill",
+ "open_choices_for_bill": ["grid cadence (drafted) vs daily decisions with a 20-session holding lock after each switch", "include R1g as the second ledger (drafted) vs compare only to loaded anchors with the idle-cash caveat", "block diagnostic included (drafted) or omitted"]
+}

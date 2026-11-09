@@ -1,0 +1,530 @@
+[
+ {
+  "file": "AlmgrenChrissStrategy.py",
+  "cls": "AlmgrenChrissStrategy",
+  "tf": "15m",
+  "can_short": true,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "Bandtastic.py",
+  "cls": "Bandtastic",
+  "tf": "15m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "BreakEven.py",
+  "cls": "BreakEven",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "CustomStoplossWithPSAR.py",
+  "cls": "CustomStoplossWithPSAR",
+  "tf": "1h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "Diamond.py",
+  "cls": "Diamond",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "FixedRiskRewardLoss.py",
+  "cls": "FixedRiskRewardLoss",
+  "tf": null,
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "GodStra.py",
+  "cls": "GodStra",
+  "tf": "12h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "Heracles.py",
+  "cls": "Heracles",
+  "tf": "4h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "HourBasedStrategy.py",
+  "cls": "HourBasedStrategy",
+  "tf": "1h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "InformativeSample.py",
+  "cls": "InformativeSample",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [
+   "BTC/USDT",
+   "ETH/USDT"
+  ],
+  "informative_whitelist": true,
+  "informative_decorators": []
+ },
+ {
+  "file": "MultiMa.py",
+  "cls": "MultiMa",
+  "tf": "4h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "PatternRecognition.py",
+  "cls": "PatternRecognition",
+  "tf": "1d",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "PowerTower.py",
+  "cls": "PowerTower",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "Strategy001.py",
+  "cls": "Strategy001",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [
+   "BTC/USDT",
+   "ETH/USDT"
+  ],
+  "informative_whitelist": true,
+  "informative_decorators": []
+ },
+ {
+  "file": "Strategy001_custom_exit.py",
+  "cls": "Strategy001_custom_exit",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [
+   "BTC/USDT",
+   "ETH/USDT"
+  ],
+  "informative_whitelist": true,
+  "informative_decorators": []
+ },
+ {
+  "file": "Strategy002.py",
+  "cls": "Strategy002",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [
+   "BTC/USDT",
+   "ETH/USDT"
+  ],
+  "informative_whitelist": true,
+  "informative_decorators": []
+ },
+ {
+  "file": "Strategy003.py",
+  "cls": "Strategy003",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [
+   "BTC/USDT",
+   "ETH/USDT"
+  ],
+  "informative_whitelist": true,
+  "informative_decorators": []
+ },
+ {
+  "file": "Strategy004.py",
+  "cls": "Strategy004",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [
+   "BTC/USDT",
+   "ETH/USDT"
+  ],
+  "informative_whitelist": true,
+  "informative_decorators": []
+ },
+ {
+  "file": "Strategy005.py",
+  "cls": "Strategy005",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [
+   "BTC/USDT",
+   "ETH/USDT"
+  ],
+  "informative_whitelist": true,
+  "informative_decorators": []
+ },
+ {
+  "file": "Supertrend.py",
+  "cls": "Supertrend",
+  "tf": "1h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "SwingHighToSky.py",
+  "cls": "SwingHighToSky",
+  "tf": "15m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "TWAPStrategy.py",
+  "cls": "TWAPStrategy",
+  "tf": "15m",
+  "can_short": true,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "TrendRiderStrategy.py",
+  "cls": "TrendRiderStrategy",
+  "tf": "1h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": true,
+  "informative_decorators": []
+ },
+ {
+  "file": "UniversalMACD.py",
+  "cls": "UniversalMACD",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\ADXMomentum.py",
+  "cls": "ADXMomentum",
+  "tf": "1h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\ASDTSRockwellTrading.py",
+  "cls": "ASDTSRockwellTrading",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\AdxSmas.py",
+  "cls": "AdxSmas",
+  "tf": "1h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\AverageStrategy.py",
+  "cls": "AverageStrategy",
+  "tf": "4h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\AwesomeMacd.py",
+  "cls": "AwesomeMacd",
+  "tf": "1h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\BbandRsi.py",
+  "cls": "BbandRsi",
+  "tf": "1h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\BinHV27.py",
+  "cls": "BinHV27",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\BinHV45.py",
+  "cls": "BinHV45",
+  "tf": "1m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\CCIStrategy.py",
+  "cls": "CCIStrategy",
+  "tf": "1m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\CMCWinner.py",
+  "cls": "CMCWinner",
+  "tf": "15m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\ClucMay72018.py",
+  "cls": "ClucMay72018",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\CofiBitStrategy.py",
+  "cls": "CofiBitStrategy",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\CombinedBinHAndCluc.py",
+  "cls": "CombinedBinHAndCluc",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\DoesNothingStrategy.py",
+  "cls": "DoesNothingStrategy",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\EMASkipPump.py",
+  "cls": "EMASkipPump",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\Freqtrade_backtest_validation_freqtrade1.py",
+  "cls": "Freqtrade_backtest_validation_freqtrade1",
+  "tf": "1h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\Low_BB.py",
+  "cls": "Low_BB",
+  "tf": "1m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\MACDStrategy.py",
+  "cls": "MACDStrategy",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\MACDStrategy_crossed.py",
+  "cls": "MACDStrategy_crossed",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\MultiRSI.py",
+  "cls": "MultiRSI",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\Quickie.py",
+  "cls": "Quickie",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\ReinforcedAverageStrategy.py",
+  "cls": "ReinforcedAverageStrategy",
+  "tf": "4h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\ReinforcedQuickie.py",
+  "cls": "ReinforcedQuickie",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\ReinforcedSmoothScalp.py",
+  "cls": "ReinforcedSmoothScalp",
+  "tf": "1m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\Scalp.py",
+  "cls": "Scalp",
+  "tf": "1m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\Simple.py",
+  "cls": "Simple",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\SmoothOperator.py",
+  "cls": "SmoothOperator",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\SmoothScalp.py",
+  "cls": "SmoothScalp",
+  "tf": "1m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\TDSequentialStrategy.py",
+  "cls": "TDSequentialStrategy",
+  "tf": "1h",
+  "can_short": false,
+  "informative_static": [
+   "BTC/USDT",
+   "ETH/USDT"
+  ],
+  "informative_whitelist": true,
+  "informative_decorators": []
+ },
+ {
+  "file": "berlinguyinca\\TechnicalExampleStrategy.py",
+  "cls": "TechnicalExampleStrategy",
+  "tf": "5m",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "hlhb.py",
+  "cls": "hlhb",
+  "tf": "4h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ },
+ {
+  "file": "mabStra.py",
+  "cls": "mabStra",
+  "tf": "4h",
+  "can_short": false,
+  "informative_static": [],
+  "informative_whitelist": false,
+  "informative_decorators": []
+ }
+]

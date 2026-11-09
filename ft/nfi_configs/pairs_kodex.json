@@ -1,0 +1,14 @@
+{
+ "exchange": {
+  "name": "binance",
+  "pair_whitelist": [
+   "BAT/USDT"
+  ]
+ },
+ "pairlists": [
+  {
+   "method": "StaticPairList"
+  }
+ ],
+ "bot_name": "dobby_backtest_only_nfi_kodex"
+}

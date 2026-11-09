@@ -1,0 +1,46 @@
+{
+ "version": "predict-h20-v3-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_FIT_NO_RUN",
+ "created_at_utc": "2026-11-06T09:25:00+00:00",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "candidate": "H3 = expanding mean of mature 20-session labels conditioned on the frozen volatility state (state-vol-v1 EWMA forecast above or below the frozen calibration reference variance) observed at the label's own decision",
+ "selection_rationale": [
+  "The only module in today's ladder with a verified score improvement is the volatility state (EWMA QLIKE lower than the constant reference in 10 of 12 years). Every return-conditioning variable tried so far (MA200 regime at 1 and 20 sessions, sign of the last return) did not beat the expanding mean. The volatility state is the one causal, frozen, independently verified feature not yet tested as a conditioning variable for expected return.",
+  "The question it answers is narrow and pre-specified: does the 20-session mean price return differ between high- and low-volatility states as defined before any outcome was seen? Allocation v1 already changed exposure by this state and lowered drawdown with lower terminal PnL; whether the conditional mean itself differs is the missing descriptive fact behind that result.",
+  "It adds exactly one element to the frozen H1 baseline with the same estimator family as H2 (two-cell conditional expanding mean), so the comparison isolates the conditioning variable.",
+  "The state enters only as an ordinal cell (above/below a fixed threshold), so the series/unit mismatch bill flagged for mean-variance combination does not arise; no h value is used as a magnitude.",
+  "Alternatives considered and not selected now: (a) a no-trade band for allocation v1 (costs were about 2% of the PnL difference, so the band cannot change the conclusion); (b) heterogeneous-agent b>0 mechanism study (F2) (mechanism, not a prediction or ledger question); (c) stopping the prediction axis and reporting to the owner (can follow this rung either way)."
+ ],
+ "fixed_baseline": {"H1": "stored predict-h20-v1 expanding mean per grid decision (artifact predict_h20_v1_20261106_085637_64813595, sha256 4dccf308500d34e00d00a89719ff4a41d17e1844c2cf99824a11f0353f216448)", "H0": "stored zero", "H2": "not adopted (bill 18:17); optional descriptive H3 - H2 only if bill wants it"},
+ "unchanged_from_h20_v1_v2": ["target Y_j = O[j+21]/O[j+1] - 1 raw open to open, gross simple price return", "decision close i, entry open i+1, exit open i+21; maturity j >= 199 and j + 21 <= i", "training policy B (all mature labels), fixed grid origin 3031 step 20, grid-only forecasts, updates stop at the last grid decision 5931", "calendar facts 146/145/1, first pool 2812, 5712 updates, blocks per entry year", "metric family, null handling, exclusions (no 1-day comparison, no x20 scaling, no PnL, no p-values, no post-hoc calibration, no offset/horizon selection)", "resources: CPU 1, external timeout 60, optimizer calls 0, API 0, orders 0"],
+ "volatility_state_feature": {
+  "source_module": "state-vol-v1 (spec sha256 5df26ad21d582694f4a425500727260b3d5f1f8bcfdce17d0c9a17b92fd57225, results sha256 bc7eaf20e15bdbf0ce54399586171fc5f319d3d8fbe7b3a353de88e1b6985b1e), lambda 0.94 frozen",
+  "h_t": "EWMA conditional second moment of the adjusted close-to-close log return for session t+1, formed at close t: h_initial = mean of the first 252 calibration r^2, then h_{t+1} = 0.94 h_t + 0.06 r_t^2 recursively over the adjusted return series; this reproduces the frozen state recursion exactly (same float expression order), it is not a new estimate",
+  "why_recompute": "the stored forecast_records cover decisions from 2014-12-30 only, while pooled labels start at index 199 (2003-08-01); the recursion is deterministic given the frozen spec, so warm-up values are reproduced and the 2,906 stored forecasts serve as an exact alignment anchor (every recomputed h for a stored decision must equal the stored value bit-for-bit or within 1e-18)",
+  "threshold": "h_ref = constant_calibration_second_moment = mean of calibration r^2 through 2014-12-31 (2.1990e-04 per the state envelope), frozen before any outcome; v_t = 1 if h_t > h_ref else 0; equality -> 0",
+  "availability": "h_t uses adjusted closes through t only; v_t is defined for every t >= 199 because the EWMA starts in 2003 after 252 calibration returns (first return index 1, so h is defined from index 252 onward; indices 199..251 fall inside the initial 252-return window and would be undefined) - see open_point_1",
+  "open_point_1": "pool start 199 precedes the first defined EWMA value (index 252). Options: (A) keep pool start 199 for the global/H1 pool and assign labels with j < 252 to a third 'undefined' cell that is never selected (counted and reported); (B) move the pool start for ALL variants to 252 and re-derive the calendar facts (breaks exact reuse of stored H1 pool counts). dobby recommends (A): H1 pool and alignment stay byte-identical, only 53 labels sit in the undefined cell"
+ },
+ "new_predictor": {
+  "name": "H3_volstate_conditional_mean",
+  "formula": "at grid decision i: mean of mature labels Y_j with v_j == v_i (cells 0/1); labels with undefined v_j (j < 252) are in cell 'undefined', counted, never selected",
+  "attribution": "each matured label j is added at close i = j + 21 to the global accumulator and to cell v_j (its own decision's state), never to the current state",
+  "fallback": "empty selected cell -> contemporaneous global mean (must equal stored H1 within 1e-15), counted; empty global -> 0, counted",
+  "invariants": "n_cell0 + n_cell1 + n_undefined == n_global; n_selected == n_cell[v_i]; empty cell mean null"
+ },
+ "comparisons": {"primary": "paired squared-error difference H3 - H1, overall and by entry year", "secondary": ["H3 - H0", "MSE ratio to H0 (null if 0)", "share of blocks H3 strictly better than H1", "cross moments, centered covariance, sign accuracy (mu != 0, Y != 0), mu mean / population sd", "cell diagnostics at the first and last grid decision (2026-10-28 pool): counts and means for cell0 / cell1 / undefined, v_i, h_i, h_ref", "state alignment: max |recomputed h - stored h| over the 2,906 stored decisions"], "interpretation": "descriptive; either sign is a legitimate outcome; no expected improvement declared; a conditional-mean difference by volatility state is sample weighting, not a timing rule or profit evidence"},
+ "parents": ["raw_prices 2da39950…", "adjusted_prices 844b2789…", "state_vol_v1_spec 5df26ad2… (lambda, initial window, calibration end, h_ref definition)", "state_vol_v1_results bc7eaf20… (h_ref value and 2,906 forecast anchors)", "predict_h20_v1_results 4dccf308… (H0/H1/outcomes)", "spec"],
+ "verification_required": [
+  "synthetic EWMA recursion with lambda as Fraction(94,100) against the float recursion within 1e-15 relative; initial-window mean; undefined prefix handling",
+  "synthetic fixture (pool start 1, horizon 3, small initial window) with hand states incl. equality -> 0, attribution to own-decision state, Fraction cell means, undefined cell counted and never selected, fallbacks, invariants, grid-only storage, pending at the end",
+  "perturbation of adjusted C after k: forecasts <= k unchanged; C[k] changes r_k and r_(k+1), hence h_t for ALL t >= k (EWMA has infinite memory): assert forecasts before k unchanged only; do not assert later invariance",
+  "raw O perturbations as in h20-v1/v2 (numerator from decision k, denominator from decision k+20; step-1 intermediate checks)",
+  "anchors: h20-v1 (H0/H1/outcomes) and state-vol-v1 (h for stored decisions, h_ref) alignment pass and rejection cases; constant-price payload; input validation",
+  "real data: six hashes before and after; calendar facts incl. yearly blocks; stored anchors aligned; no real-data mean, state or score in selftest",
+  "single xb write with allow_nan=False; separate run log; bill reviews the final code hash before one bounded run"
+ ],
+ "outputs": {"output_dir": "%USERPROFILE%\\Documents\\Codex\\2026-11-05\\x20-teatray-top-irc\\work\\predict_h20_v3_20261106", "overwrite": false, "prediction_records": ["decision_index/session", "block_k", "entry/exit or null", "h_i", "v_i", "mu_hat_H3", "n_global", "n_cell0", "n_cell1", "n_undefined", "n_selected", "global_mean_for_fallback", "cell_means or null", "fallback flags", "train_max_label_available_session", "pending status", "anchor_mu_loaded {H0, H1}", "envelope and anchor references"]},
+ "prohibited_in_this_run": ["choosing the threshold, lambda, horizon, grid, pool or policy after outcomes", "using h as a magnitude in the prediction or any mean/variance pairing", "more than one conditional element", "allocation or order changes", "any profitability, timing or edge claim"],
+ "open_choices_for_bill": ["open_point_1: undefined cell (A, recommended) vs pool start 252 for all (B)", "threshold h_ref from the state envelope (drafted) vs expanding median of past h (needs full history, more moving parts)", "include H3 - H2 descriptive or not", "whether to also report cell means on the 1-session target later (separate scope)"]
+}

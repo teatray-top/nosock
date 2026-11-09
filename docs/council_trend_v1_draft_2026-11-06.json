@@ -1,0 +1,63 @@
+{
+ "version": "council-trend-v1-draft",
+ "status": "DOBBY_DESIGN_DRAFT_FOR_BILL_AND_OWNER_NO_FIT_NO_RUN",
+ "owner_directives": [
+  "2026-11-06 23:54 desired behaviour: take profit without overreaching and build cash when winning; cut fast when losing; enter well after drops",
+  "2026-11-06 23:55 not rules only: an intuition model, rules, the fruit-fly guard (bill.py) and jev must cooperate on several axes; find more diverse uses of the fruit-fly guard",
+  "2026-11-06 23:56 not minute-level: predict 'the current trend is down'"
+ ],
+ "aligns_with": {"bill_gap_review": "work/owner_policy_gap_review_20261106.json sha256 d7082bc64241e06aa3be5ce4f0e2d76a281e548369c7af8a17a0c8e4260e6382", "cadence_answer": "daily close decision, next-open execution (owner: not minute-level)"},
+ "components": {
+  "T_trend_state_model": {
+   "question": "at today's close, is the current trend down?",
+   "output": "P(down) in [0,1] plus the argmax state in {down, up, neutral}",
+   "features_at_close": ["the frozen 5 price features (logret5/20/60, ma200_distance, sd20)", "logret120, slope of a 20-session linear fit of log close, distance from the 60-session peak (drawdown), count of down closes in the last 10 sessions, sd60/sd20 ratio", "no held state, no position information, no future values"],
+   "labels_source_A_generated": "the hidden regime sidecar of the 100 generated paths mapped by declaration: down = {descent, crash}, up = {ascent, rebound}, neutral = {sideways, highvol}; the mapping is a declared assumption (highvol as neutral is a choice, not a truth) and the labels describe the generator's regime, not real market states; only ever used as training targets for T, never as inference inputs; training paths train_000..059 only",
+   "two_distinct_targets": "classifying the generator's hidden regime (A) and predicting a real forward 20-session drawdown (B) are different targets; their scores are reported separately and never combined into one accuracy figure",
+   "labels_source_B_real_proxy": "for evaluation only: real session t labelled down if min over the next 20 sessions of close/close_t - 1 < -5% and the 20-session forward return < 0; up if the 20-session forward return > +5% and max drawdown within the window > -3%; else neutral; proxy labels are never used for fitting in v1",
+   "learner": "LightGBM multiclass, fixed parameters declared before the fit (num_leaves 7, depth 3, lr .05, 200 rounds, min_leaf 200, l2 1, seed 0, 1 thread, deterministic); one fit on synthetic training paths (no real rows, so no walk-forward folds are needed for leakage); evaluation on check/test paths (regime labels) and on the real calendar (proxy labels, confusion matrix by year)",
+   "fits": 1,
+   "no_tuning": "threshold theta = 0.5 fixed; no selection on real or evaluation profit"
+  },
+  "B_intuition_model": "the frozen B fits of result 0b10b9da as the buy/sell intuition, unchanged: any historical comparison on 2014-12-30..2026-11-05 uses the 12 year-specific B folds exactly as verified (fold y decides only in its execution year); the 2026 fold is used only for live 2026 sessions; using the 2026 fold on earlier years would mix future training data and is excluded",
+  "R_rule_layer_explicit": {
+   "inputs": "position state the current learner lacks (bill gap review): entry cost basis, unrealized PnL, sessions since entry, peak value since entry (giveback), cash share",
+   "rules_v1_one_at_a_time": ["R1 trend gate: if P(down) >= 0.5 at the close, target weight 0 regardless of B (cash)", "R2 trailing giveback cut: while long, if value falls more than 5% from the peak value since entry, target weight 0 at the next open (quick cut on the daily cadence)", "R3 partial profit: if unrealized gain since entry > 10% and P(down) rose above 0.5 from below, sell half (first non-binary action; requires the ledger to accept weight 0.5)"],
+   "rung_discipline": "each rule is a separate rung with its own spec and comparison; v1 implements R1 only"
+  },
+  "F_fruit_fly_connectome_flybrake": {
+   "correction": "the fruit fly is G:/NoSock/stock/flybrake.py (mushroom-body model), not penny/bill.py (a threshold order guard); the earlier bill.py-based list is withdrawn",
+   "current_implementation": "input x (per-asset features + 4 global) -> fixed random projection P -> PN -> connectome weights Wpk (mb_right.npz PN->KC, row-normalised; control = per-row random rewiring) -> top-5% sparse KC code z -> single readout avoid = clamp(z.w) -> buy increments scaled by (1 - 0.3 avoid); delta-rule learning on the sign of the log return H = 7 panel steps after each remembered buy (|ret| >= .004), homeostatic theta for sparsity; 60-minute US+KR 40-asset panel on top of the PPO policy v2; it cannot reduce an existing holding",
+   "existing_evidence": "runs/v2_fly.json (2026-11-04): 2026 segment twr dobby 5.05%, +fly connectome 5.30%, +fly random wiring 5.32%, +random brake 5.31%, mdd all -12.34%, mean_avoid .54: the connectome brake is indistinguishable from random wiring and from a random brake; no learned effect is evidenced; the small return change is a buy-reduction (cash) effect",
+   "extension_candidates_for_bill_to_rank": [
+    "Fly-1 multiple MBON readouts on the same KC code: separate delta-rule heads per target (down-trend head: daily features, target = 20-session forward return < 0 learned with the natural label delay; profit-giveback head while long; regime head trained on generated labels and evaluated on generated paths only); targets are never pooled",
+    "Fly-2 symmetric brake: when holding and the avoid readout is high, reduce the holding as well as the buy increment (current code only brakes buying); this is the quick-cut lever",
+    "Fly-3 novelty score: overlap (max cosine) between today's KC code and remembered codes -> unfamiliar-situation score; the council shrinks size when novelty is high; this is a measurable form of the owner's 'no situation should be new'",
+    "Fly-4 daily KODEX fly: a separate instance on daily 069500 features (the 5 frozen + 5 trend features); the delta rule is online learning, so walk-forward is natural and CPU is enough; no empirical run before bill's spec",
+    "Fly-5 controls at every rung: random wiring and random brake run alongside; if the connectome is not distinguishable from them, the head is not adopted"
+   ],
+   "limits": "no claim that the connectome itself carries market knowledge; the current evidence says it does not"
+  },
+  "J_jev_discretionary_read": {
+   "input_at_close": "daily chart image of the last 120 sessions with MA20/MA200, the B signal history, P(down), and the F2 flow summary",
+   "question": "is the current trend down, up or unclear; would you buy, hold, sell or wait tomorrow at the open; one-line reason",
+   "role": "logged opinion with fixed weight; never the sole trigger; disagreement with T and B is logged for the owner",
+   "cost": "one free-LLM call per session (opencode jev model, existing jev_client.py)"
+  },
+  "council_rule_v1": {
+   "order": "T gate -> B direction -> R rules -> bill.py execution guard at the open -> Fly readouts and J opinion logged",
+   "decision": "weight 0 if P(down) >= 0.5 (T) or a rule R fires; else weight 1 if B > 0, 0 if B < 0, keep if B == 0; the order is placed only if the bill.py guard passes at the open; Fly heads (when adopted after their own rungs) and J are recorded alongside with agree/disagree; in v1 neither Fly nor J changes the decision",
+   "transparency": "every session record stores each component's output and reasons so the owner can see who said what"
+  }
+ },
+ "evaluation_single_axis": {
+   "comparison": "council v1 (T gate + B) vs B alone, same frozen ledger mechanics, real calendar 2014-12-30..2026-11-05 plus the 40 generated check/test paths (A/B/AL style)",
+   "note_on_T_training_data": "T is trained on generated training paths only; applying it to the real calendar in all years is not look-ahead on real data, but it is a retrospective evaluation on viewed history",
+   "counts": "fits 1 (T), ledgers 1 real + 40 x 2 arms = 81, CPU 1, external timeout 300 s",
+   "report": "post-cost PnL, drawdown, exposure, trades, yearly increments; two separate T reports: (A) confusion matrix against generated hidden regimes on check/test paths, (B) confusion matrix and precision/recall for real forward 20-session drawdown events by year; share of real sessions gated to cash; the two T scores are never merged; no claim beyond what the numbers show",
+  "historical_B_models": "the yearly B folds of result 0b10b9da are applied only in their own execution years; no fold is applied before its cutoff"
+  },
+  "operations_after_review": "the daily loop (paper first, live only on the owner's DOBBY_LIVE=1) records T, B, R, F, J outputs each session and executes the council decision at the next open through F1/F5",
+  "not_in_scope_v1": ["minute-level exits", "leveraged instruments", "new price features for B", "threshold tuning", "retraining B"],
+  "asks": {"bill": "fix the T spec (features, labels, learner params, evaluation outputs) and the council v1 rule; review F1/F2 operational scope separately", "owner": "confirm that the daily-close cadence is acceptable for 'cut fast' and 'take profit', and whether jev's opinion should stay advisory (logged) in v1"}
+}

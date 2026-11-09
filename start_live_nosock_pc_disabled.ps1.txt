@@ -1,0 +1,9 @@
+﻿Set-Location G:\NoSock\stock\penny
+Remove-Item runs\live_nosock.stop -ErrorAction SilentlyContinue
+$env:DOBBY_LIVE = "1"
+$p = Start-Process -FilePath "python" -ArgumentList "-X","utf8","live_nosock.py","run" -WorkingDirectory "G:\NoSock\stock\penny" -WindowStyle Hidden -RedirectStandardOutput "G:\NoSock\stock\penny\runs\live_nosock.out" -RedirectStandardError "G:\NoSock\stock\penny\runs\live_nosock.err" -PassThru
+$p.PriorityClass = 'Idle'
+"NoSock 자동 실주문 시작: pid $($p.Id). 멈추려면 stop_live_nosock.ps1"
+$w = Start-Process -FilePath "python" -ArgumentList "-X","utf8","scenario_desk.py","watch" -WorkingDirectory "G:\NoSock\stock\penny" -WindowStyle Hidden -RedirectStandardOutput "G:\NoSock\stock\penny\runs\scenario_watch.out" -RedirectStandardError "G:\NoSock\stock\penny\runs\scenario_watch.err" -PassThru
+$w.PriorityClass = 'Idle'
+"시나리오 감시(모의) 시작: pid $($w.Id)"

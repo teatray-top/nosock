@@ -1,0 +1,110 @@
+{
+ "version": "fillgate-fixtures-v1",
+ "launcher": {
+  "file": "ft_kr_fillgate.py",
+  "sha256": "fcf9bb01a04f2b0c531505a1a22576d48c6a7f1d848d533c5f689f9f134d8a91"
+ },
+ "fixture": {
+  "strategy": "e0568032d9de04a2ca33f9fc0b4052df9720759d20a44bd9807bc23e8338a30c",
+  "data": "8db4c8af31269cd463fe51ff8cb7377698f717099c67dde667a9332b93089f35",
+  "calendar": "9c878e889ca7024d8497ca2b09972f961ee7c073e6b02b84d2b9134ffdf0be11",
+  "config": "5176443c57f6f41e031a863149c9d463b95c0414549f1f5196f37ab0afb640fb"
+ },
+ "gated_trades": [
+  [
+   "2026-01-05 09:05",
+   "2026-01-05 10:05"
+  ],
+  [
+   "2026-11-19 15:20",
+   "2026-11-20 09:00"
+  ]
+ ],
+ "control_trades": [
+  [
+   "2026-01-05 09:05",
+   "2026-01-05 10:00"
+  ],
+  [
+   "2026-01-05 15:20",
+   "2026-11-19 16:20"
+  ]
+ ],
+ "blocked": [
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-05 01:00:00+00:00",
+   "side": "sell",
+   "price": 10.012,
+   "amount": 98.0,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-05 06:20:00+00:00",
+   "side": "buy",
+   "price": 10.076,
+   "amount": 98.0,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-05 06:20:00+00:00",
+   "side": "buy",
+   "price": 10.076,
+   "amount": 98.0,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-06 01:00:00+00:00",
+   "side": "buy",
+   "price": 10.512,
+   "amount": 94.0,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-06 01:00:00+00:00",
+   "side": "buy",
+   "price": 10.512,
+   "amount": 94.0,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-11-19 07:20:00+00:00",
+   "side": "sell",
+   "price": 11.076,
+   "amount": 89.0,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-11-19 07:25:00+00:00",
+   "side": "sell",
+   "price": 11.077,
+   "amount": 89.0,
+   "reason": "auction_bucket"
+  }
+ ],
+ "gate_calls": {
+  "load_data": 1,
+  "dataprovider_load_pair_history": 0,
+  "asof_merge": 0,
+  "fill_attempts": 11,
+  "fills_blocked": 7
+ },
+ "gated_zip": "a29a3f9e489e630030fd667d0845f1ba32081d2d089404823f4e9f6351bc361c",
+ "control_zip": "3d3bf41309b188bd21cf3d3eac998066b2e4576f37b6ffd74acb5b77b15d2b6e",
+ "checks": {
+  "exit_blocked_on_zero_volume_then_retried_next_real_bar": true,
+  "control_exits_on_the_zero_volume_bar": true,
+  "entry_on_normal_day_auction_bucket_expires": true,
+  "entry_on_zero_volume_bar_expires": true,
+  "suneung_1520_is_not_an_auction_bucket": true,
+  "suneung_1620_and_1625_exits_blocked_then_next_session_open": true,
+  "timeouts_entry_2_exit_3": true
+ },
+ "all_pass": true
+}

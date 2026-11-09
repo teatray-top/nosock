@@ -1,0 +1,18 @@
+{
+ "note": "KODEX KOSDAQ150 (229200) for the partially-seen transfer test: merged from data/kr_etf/1m_backfill_20261107_023458/days (964 sessions), real UTC time, engine gap fill disabled through ft_kr.py, borrowed pair ALGO/USDT, prices / 10000, volume unchanged; BTC_USDT-5m and BTC_USDT-4h are copies of 229200's own bars",
+ "price_scale": 10000,
+ "time_axis": "real",
+ "snapshot_dir": "user_data/data_kosdaq150_v1/source_snapshot",
+ "window_kst": [
+  "2022-11-23",
+  "2026-11-05"
+ ],
+ "pairs": [
+  {
+   "symbol": "229200",
+   "name": "KODEX KOSDAQ150",
+   "source": "229200.csv",
+   "pair": "ALGO/USDT"
+  }
+ ]
+}

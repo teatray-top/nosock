@@ -1,0 +1,18 @@
+{
+ "version": "kodex-same-basis-compare-v1",
+ "status": "PREREGISTERED_BEFORE_THE_COMPARISON_RUN",
+ "question": "On KODEX 200 with the same lump sum, window, valuation clock, integer shares and ETF costs, how do the EMA ribbon (operating paper rule), AdxSmas and mabStra (rung-2 freqtrade results, replayed) and buy-and-hold compare in return and drawdown?",
+ "windows": {"A": "2022-11-23..2025-12-30 (a past window not used by the 52-strategy sweep; KODEX daily history was seen in the ribbon research, so not called unseen)", "B": "2026-01-12..2026-11-05"},
+ "capital": "10,000,000 won at the first session of the window, no deposits, no withdrawals",
+ "prices": "raw (unadjusted) prices from the fixed KODEX 1m snapshot user_data/data_kodex/source_snapshot/069500.csv (ee10cfe3): session open = open of the first minute bar, session close = close of the last minute bar (closing-auction print); dividends are ignored for every method alike",
+ "valuation": "equity = cash + shares x session close, every session of the window, for every method; max drawdown is computed on this daily equity series for all methods",
+ "costs": "0.015% commission on each side (ETF, no sell tax), integer shares; no extra slippage for any method (the freqtrade fills are at bar opens without slippage, so the rule-based methods get the same treatment); a +-5 won per share slippage sensitivity is reported separately",
+ "methods": {
+  "hold": "buy the affordable integer shares at the first session open, hold to the last session close",
+  "ribbon": "EMA 8>21>50>200 on adjusted daily closes from the 2002-10-14 origin (kodex_daily_adj.json, the operating rule core definition); decision at each session close; execution at the next session open, all-in or all-out with integer shares; the position on the first session is decided by the close before the window",
+  "AdxSmas_replay": "trades from results/rung2_v1/<window>/AdxSmas replayed on the same valuation clock: cash changes by amount x rate x (1 +- fee) at each fill; parity check: final equity must equal the engine's final balance x 10,000",
+  "mabStra_replay": "same replay for results/rung2_v1/<window>/mabStra"
+ },
+ "reported": ["final equity", "return %", "max drawdown % on daily equity", "average exposure (share value / equity)", "number of round trips"],
+ "no_claim": "one instrument, two windows; descriptive comparison only, not a profitability proof or a live approval"
+}

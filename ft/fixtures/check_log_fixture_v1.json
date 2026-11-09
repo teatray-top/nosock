@@ -1,0 +1,58 @@
+{
+ "version": "fill-log-order-checks-v1",
+ "params": {
+  "bars": "fixtures/fillgate_v1/data/binance/ALGO_USDT-5m.feather",
+  "session_calendar": "fixtures/fillgate_v1/calendar.json",
+  "scale": 10000,
+  "runs": {
+   "v1_gated": {
+    "log": "fixtures/fillgate_v1/out/gated/gate_log.json",
+    "result_dir": "fixtures/fillgate_v1/out/gated",
+    "strategy": "FillGateFixture"
+   }
+  },
+  "out": "fixtures/check_log_fixture_v1.json"
+ },
+ "code_sha256": "177b35b7dc5e02bfdcc1b6d81adf2bcf664c08cee392ad3c265d007f5f570213",
+ "fills_source_sha256": "5c6c39a4f3475b98251430130f463eab2552220a382c70d3f526c442aeaac674",
+ "runs": {
+  "v1_gated": {
+   "orders": 4,
+   "violations": {
+    "non_integer_shares": 0,
+    "off_5won_grid": 0,
+    "outside_bar_range": 0,
+    "zero_volume_bar": 0,
+    "auction_bucket": 0,
+    "no_bar": 0
+   },
+   "violations_total": 0,
+   "max_order_share_of_bar_volume": 0.098,
+   "examples": [],
+   "source": "G:\\NoSock\\stock\\penny\\ft\\fixtures/fillgate_v1/out/gated/gate_log.json",
+   "source_sha256": "eb2b6f99445e48c72e2e57a4972d08d68a32b2f16c4abd7615194c77d0e9f9ab",
+   "blocked_attempts": 7,
+   "blocked_force_exits": 0,
+   "open_trades_at_exit": 0,
+   "engine_final_balance": 1039.98,
+   "self_ledger": {
+    "cash": 1039.98,
+    "held": 0.0,
+    "last_close": 11.577,
+    "equity_at_last_close": 1039.98,
+    "orders_used": 4,
+    "force_exits_dropped": 0
+   },
+   "self_ledger_without_force_exits": {
+    "cash": 1039.98,
+    "held": 0.0,
+    "last_close": 11.577,
+    "equity_at_last_close": 1039.98,
+    "orders_used": 4,
+    "force_exits_dropped": 0
+   },
+   "engine_matches_self_ledger": true,
+   "status": "clean"
+  }
+ }
+}

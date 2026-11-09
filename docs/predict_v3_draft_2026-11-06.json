@@ -1,0 +1,52 @@
+{
+ "version": "predict-v3-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_FIT_NO_RUN",
+ "created_at_utc": "2026-11-06T08:30:00+00:00",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "purpose": "One added element over the frozen P1: keep the magnitude the sign cell discarded by adding one continuous regressor x_i = adjusted C[i]/C[i-1] - 1 in an expanding least-squares line mu = alpha + beta * x. Same target, maturity pool, stored P1/P3 baselines. Forecast study only; no orders, no allocation change, no h combination.",
+ "parents": {
+  "raw_prices": "2da39950164f07a0d76cd8ec000c48cc4d5f90000f6a811f2490796988a9f4eb",
+  "adjusted_prices": "844b27891727b1faa227ea3259cb47eee258f8bf85ec30a3fc6a41b5a299a609",
+  "predict_v1_results": "01601fb90442bf0f0958f3670f293ae0cbcff35e60d985d1e9ee7478d38284ba (P0/P1/P2 anchor, outcomes anchor)",
+  "predict_v2_results": "6d53114cc403c4e60ae520d98ab8ab164ee6f8894a910e41d018ec43eefb1b4d (P3 anchor)"
+ },
+ "unchanged": ["target y_j = O[j+2]/O[j+1] - 1 raw open to following open", "decision at close i; pool j >= 199 and j+2 <= i; j = i-1 excluded", "update order: at close i incorporate matured label j = i-2 with its own regressor x_j, then compute x_i and emit", "2906 predictions, 2905 scored, 1 pending; entry-year grouping", "baselines loaded verbatim; global mean compared to stored P1 within 1e-15; targets compared to stored outcomes within 1e-15", "metrics family and exclusions of predict-v1/v2; no OLS calibration regression on outputs, no p-values, no PnL", "CPU 1, external timeout 60, optimizer fits 0, closed-form running statistics only, API 0, orders 0", "selftest: synthetic only for estimation; real data hashes, calendar, anchor alignment only"],
+ "feature": {
+  "name": "latest_completed_adjusted_close_simple_return",
+  "definition": "x_i = adjusted C[i] / adjusted C[i-1] - 1, defined for i >= 1, observed at close i",
+  "transform": "none: no winsorization, clipping, scaling or lag stacking (all would be tuned choices); heavy tails are declared and measured, not treated"
+ },
+ "new_predictor": {
+  "name": "P4_expanding_ols_prev_return",
+  "formula": "mu_i = alpha_i + beta_i * x_i where (alpha_i, beta_i) minimise sum over the mature pool of (y_j - alpha - beta x_j)^2",
+  "closed_form": "beta = Cxy / M2x, alpha = ybar - beta * xbar with xbar, ybar pool means, M2x = sum (x_j - xbar)^2, Cxy = sum (x_j - xbar)(y_j - ybar)",
+  "stable_computation": "running centered statistics updated per matured label (Welford form): n += 1; dx = x - xbar; xbar += dx / n; dy = y - ybar; ybar += dy / n; M2x += dx * (x - xbar); Cxy += dx * (y - ybar). No raw sum-of-squares differencing. ybar is also the global P1 statistic and must match stored P1 within 1e-15.",
+  "fallback_rules": {
+   "n_pool == 0": "mu = 0; count fallback_empty",
+   "n_pool < 2 or M2x <= n_pool * 1e-24": "beta undefined -> beta = 0, mu = ybar (contemporaneous P1); count fallback_degenerate. 1e-24 is a pure numerical guard (pool sd of x below 1e-12, far below any return scale), not a tuned threshold",
+   "non-finite alpha/beta/mu": "abort with availability_status=invalid_input; never emit"
+  },
+  "update_timing": "statistics change only when a label matures (j = i-2 at close i); x_i enters only the emitted prediction, never the statistics until its own label matures at close i+2",
+  "no_regularization": "ordinary least squares only; ridge/shrinkage/window would be new design choices"
+ },
+ "baselines": {"loaded": ["P0_zero", "P1_expanding_mean", "P2_ma200_conditional_mean (v1 anchor)", "P3_sign_prev_return_conditional_mean (v2 anchor)"], "policy": "verbatim per decision; never recomputed"},
+ "comparisons": {
+  "primary": "paired squared-error difference P4 - P1, overall and by entry year",
+  "secondary": ["P4 - P0", "P4 - P3 (does magnitude add over sign?)", "P4 - P2"],
+  "p4_secondaries": "MSE ratio to P0, uncentered cross moment, centered covariance, sign accuracy (mu != 0, y != 0), mu mean / population sd, fallback counts",
+  "coefficient_diagnostics": ["alpha, beta, n, xbar, ybar, M2x, Cxy at first and last stored prediction (last = 2026-11-04 close pool)", "min and max beta over scored decisions and the sessions where they occur", "pool x diagnostics at the last stored prediction: population sd of x, max |x - xbar| / sd (leverage of the most extreme regressor)", "two-pass recomputation of alpha and beta from the stored pool at the first and last stored decisions; report max absolute deviation from the running values (stability check, not a new estimate)"],
+  "interpretation": "descriptive only; a difference of either sign is a legitimate outcome; no expected-improvement figure is declared"
+ },
+ "verification_required": [
+  "synthetic hand fixture: alpha and beta computed exactly with fractions.Fraction on an 8-10 session pool and compared to the running statistics within 1e-15 relative; attribution of x_j and y_j to the same decision j; j = i-1 exclusion",
+  "degenerate fixtures: empty pool -> 0; one sample -> P1 fallback; constant x in pool -> M2x = 0 -> P1 fallback; constant prices -> zero targets, null ratios, pending excluded, full payload",
+  "perturbations: adjusted C strictly after k leaves decisions <= k unchanged; changing C[k] changes x_k and x_(k+1) (both regressors) and may change decisions >= k (x_k enters prediction k; reassigned pairs mature at k+2, k+3) - assert decisions < k unchanged and both x values changed, do not assert later invariance; raw O after k leaves decisions <= k unchanged; O[k] can change decision k through the matured label",
+  "anchor fixtures: alignment pass; rejections for P1 mismatch > 1e-15, outcome mismatch, shifted session, duplicate decision, pool count mismatch, wrong anchor hash (both v1 and v2 anchors)",
+  "real data: five hashes (raw, adjusted, spec, v1 results, v2 results) before and after; calendar facts; stored anchors aligned to the calendar; no real-data estimation",
+  "single xb write of the complete payload; separate run log with timeout, exit, wall and hashes; bill reviews the final code hash before one bounded run"
+ ],
+ "outputs": {"output_dir": "%USERPROFILE%\\Documents\\Codex\\2026-11-05\\x20-teatray-top-irc\\work\\predict_v3_20261106", "overwrite": false, "prediction_records": ["decision_index/session", "entry/exit", "x_i", "alpha_i", "beta_i", "mu_hat_P4", "n_pool", "xbar", "ybar (= P1 global)", "M2x", "Cxy", "fallback flags", "train_max_label_available_session", "pending status", "anchor_mu_loaded {P0,P1,P2,P3}", "envelope and anchor references"], "envelope": "contract v3; ordered five parents (raw, adjusted, spec, v1 results, v2 results)"},
+ "prohibited_in_this_run": ["ridge/shrinkage, winsorization, clipping, scaling, lag selection or window selection", "more than one regressor", "selecting or reinterpreting after viewing P4 output", "h or allocation combination", "live or paper orders", "calling an MSE difference a trading edge"],
+ "open_choices_for_bill": ["degenerate guard M2x <= n * 1e-24 (drafted) vs exact M2x == 0 only", "include P4 - P2 as a secondary (drafted) or only P4 - P1 / P4 - P0 / P4 - P3", "report min/max beta sessions (drafted) or coefficient endpoints only", "whether the 20-session non-overlapping-block target (dobby option 1) is queued after this rung or dropped"]
+}

@@ -1,0 +1,151 @@
+{
+ "version": "predict-h20-v1-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_FIT_NO_RUN",
+ "created_at_utc": "2026-11-06T08:50:00+00:00",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "purpose": "Separate scope after predict-v3: the same causal expanding-mean pipeline at a 20-session horizon, scored on fixed non-overlapping blocks against an always-zero baseline. Forecast study only; addresses the owner's mid-term question only as a prediction-score diagnostic, never as a profitability judgement.",
+ "parents": {
+  "raw_prices": "2da39950164f07a0d76cd8ec000c48cc4d5f90000f6a811f2490796988a9f4eb (raw O for target, calendar)",
+  "adjusted_prices": "844b27891727b1faa227ea3259cb47eee258f8bf85ec30a3fc6a41b5a299a609 (adjusted C for the optional MA200 regime only)"
+ },
+ "target": {
+  "definition": "Y_j = O[j+21]/O[j+1] - 1: raw open of session j+1 to raw open of session j+21, gross simple price return over 20 held sessions",
+  "available_at": "open of session j+21 (exit_session)",
+  "value_unit": "simple_return",
+  "moment_order": 1,
+  "excludes": "dividends/distributions and all costs"
+ },
+ "timing": {
+  "decision": "close i, information through close i (raw and adjusted through i)",
+  "entry": "session i+1 open",
+  "exit": "session i+21 open",
+  "maturity": "training pairs j >= 199 and j + 21 <= i (j <= i - 21); labels for j in (i-21, i-1] are immature and excluded",
+  "update_order": "at close i incorporate the newly matured label j = i - 21 (its exit open O[i] is observed at open i), assigned to the regime observed at its own decision j if a regime variant is included; then emit the prediction for entry i+1",
+  "feedback": "mature labels update expanding statistics by the fixed rule; scores, diagnostics and immature labels never update predictors"
+ },
+ "fixed_block_grid": {
+  "origin": "decision index 3031 = 2014-12-30 (first decision whose entry 2015-01-02 is on or after 2015-01-01), identical to the first decision of the 1-session rungs",
+  "step": "20 sessions",
+  "stored_predictions": "only grid decisions i = origin + 20k with i + 1 < N; predictions on non-grid sessions are neither stored nor scored",
+  "scoring": "non-overlapping by construction: block k covers entry i_k+1 through exit i_k+21 = i_(k+1)+1, so consecutive blocks share only the boundary open",
+  "computed_calendar_facts": {
+   "price_sessions": 5938,
+   "horizon_sessions": 20,
+   "target": "Y_j = O[j+21]/O[j+1] - 1",
+   "pool_start_index": 199,
+   "first_common_training_decision": "2003-08-01",
+   "first_common_label_available_session": "2003-09-02",
+   "grid_origin_decision_index": 3031,
+   "grid_origin_decision": "2014-12-30",
+   "grid_origin_entry": "2015-01-02",
+   "grid_origin_exit": "2015-01-30",
+   "grid_step_sessions": 20,
+   "grid_predictions": 146,
+   "scored_blocks": 145,
+   "pending_blocks": 1,
+   "first_prediction_mature_training_count": 2812,
+   "last_scored_decision": "2026-09-28",
+   "last_scored_entry": "2026-09-29",
+   "last_scored_exit": "2026-10-29",
+   "pending": [
+    {
+     "decision_session": "2026-10-28",
+     "entry_session": "2026-10-29",
+     "exit_session": null,
+     "sessions_missing": 15
+    }
+   ],
+   "blocks_per_entry_year": {
+    "2015": 13,
+    "2016": 12,
+    "2017": 12,
+    "2018": 13,
+    "2019": 12,
+    "2020": 12,
+    "2021": 13,
+    "2022": 12,
+    "2023": 12,
+    "2024": 12,
+    "2025": 12,
+    "2026": 10
+   }
+  }
+ },
+ "training_overlap": {
+  "drafted": "B: training uses ALL mature labels j >= 199, j <= i-21 regardless of the grid (overlapping 20-session windows). Reason: each label is an observed fact available at the decision; overlap affects dependence and inference (not computed here), not the validity of the expanding point estimate; it gives about 20x the samples of grid-only training",
+  "alternative_for_bill": "A: grid-aligned training only (j on the same 20-session grid), non-overlapping but about 1/20 of the samples; one policy must be fixed before the run",
+  "both_ends": "start: the first grid decision has a pool of mature labels j in [199, origin-21]; end: grid decisions whose exit would fall after the cutoff are stored as pending_outcome (predict, never score or impute); decisions after N-2 do not exist"
+ },
+ "variants": {
+  "H0_zero": "0",
+  "H1_expanding_mean": "mean of mature 20-session labels in the pool; 0 if empty (counted)",
+  "H2_ma200_conditional_mean_optional": "bill decides; same regime definition as predict-v1 (adjusted C[i] > MA200, equality 0), conditional on the regime at the label's own decision j; fallback to H1 then 0, counted; included only if bill wants exactly one conditional element in this rung"
+ },
+ "metrics": {
+  "primary": "MSE of each variant on the scored blocks and paired squared-error difference H1-H0 (and H2-H0, H2-H1 if H2 included), overall and by entry year",
+  "secondary": [
+   "MSE ratio to H0 (null if 0)",
+   "uncentered cross moment mean(mu*Y) and centered covariance",
+   "sign accuracy where mu != 0 and Y != 0 with eligible/zero counts",
+   "mu mean / population sd",
+   "blocks per entry year, mature/pending/fallback counts"
+  ],
+  "prohibited_comparisons": [
+   "comparing 20-session MSE magnitudes with 1-session MSE magnitudes (different target variance and horizon)",
+   "judging mid-term profitability from prediction scores",
+   "p-values/CI (blocks are few and dependent)",
+   "post-hoc calibration regression",
+   "PnL/cost scores"
+  ],
+  "scale_caution": "about 12 blocks per entry year; yearly figures are descriptive only"
+ },
+ "verification_required": [
+  "synthetic fixture with pool start 1 and horizon 3 proving maturity j + H + 1 <= i, grid-stored decisions only, exact expanding means, pending at the end, empty pool at the start",
+  "perturbation: raw O after k leaves grid decisions <= k unchanged; O[k] may change decision k through the label j = k-21 matured at open k; adjusted C perturbations affect only the optional regime",
+  "constant-price full payload: null ratios, zero targets, pending excluded",
+  "real data: hashes (raw, adjusted, spec) before and after; calendar facts equal to the computed table above; counts; no real-data estimation in selftest",
+  "single xb write with allow_nan=False; separate run log; bill reviews the final code hash before one bounded run"
+ ],
+ "outputs": {
+  "output_dir": "%USERPROFILE%\\Documents\\Codex\\2026-11-05\\x20-teatray-top-irc\\work\\predict_h20_v1_20261106",
+  "overwrite": false,
+  "prediction_records": [
+   "decision_index/session",
+   "entry/exit or null",
+   "block_k",
+   "mu per variant",
+   "n_pool",
+   "regime (if H2)",
+   "fallback flags",
+   "train_max_label_available_session",
+   "pending status",
+   "envelope reference"
+  ],
+  "envelope": "contract v3; ordered parents (raw, adjusted, spec)"
+ },
+ "resources": {
+  "cpu_threads": 1,
+  "external_timeout_seconds": 60,
+  "experiments": 1,
+  "variants": "2 (3 if H2)",
+  "optimizer_fits": 0,
+  "api_calls": 0,
+  "orders": 0,
+  "random_paths": 0,
+  "statistical_learning": "expanding means are estimators; report mature-label updates and per-variant estimates (grid-stored vs warm-up)"
+ },
+ "prohibited_in_this_run": [
+  "choosing horizon, grid origin, overlap policy or variants after outcomes",
+  "more than one conditional variant",
+  "h or allocation combination",
+  "live or paper orders",
+  "any profitability or mid-term-edge claim"
+ ],
+ "open_choices_for_bill": [
+  "training overlap B (drafted) vs A",
+  "include H2 MA200 conditional or stop at H0/H1",
+  "grid origin = first evaluation decision (drafted) vs a calendar anchor",
+  "whether to also store (not score) non-grid predictions for later block-offset sensitivity (dobby suggests no: it invites selection)"
+ ]
+}

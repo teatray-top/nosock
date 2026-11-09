@@ -1,0 +1,59 @@
+{
+ "version": "timing-v2-protocol-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_TRAINING_NO_RUN",
+ "created_at_utc": "2026-11-06T12:15:00+00:00",
+ "supersedes": "timing_v1_protocol_draft 3109c38d (bill 20:55: one horizon N=20, one model; 2024-04+ is not an unobserved seal; exact two-state action values and label maturity required)",
+ "owner_directive": "learn when to buy and when to sell; verify the decisions as post-cost won PnL",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "scope": "one asset KODEX200, one horizon N = 20 sessions, one model (M1), two states (cash / holding), three actions (buy, sell, hold-or-wait), daily decisions, post-cost ledger vs baselines",
+ "data": {"adjusted_prices": "844b2789… adjusted C for features only", "raw_prices": "2da39950… raw O/C for labels and the ledger (integer won)", "state": "frozen EWMA second moment (lambda .94, pinned h_initial/h_ref) reproduced as in predict-h20-v3 for two features", "span": "2002-10-14 .. 2026-11-05"},
+ "conventions": {"decision": "close i, features through close i only", "execution": "open i+1; buy fill O[i+1]+5, sell fill O[i+1]-5; proportional fee f = 15/100000 per side in label arithmetic; integer floor fee in the ledger", "endpoint": "open i+1+N = O[i+21] with the same fill conventions", "cash_yield": 0},
+ "action_values_same_future_path": {
+  "state_cash": {
+   "buy": "pay (O[i+1]+5)(1+f) per share at open i+1; liquidation-equivalent value at the endpoint (O[i+21]-5)(1-f) per share",
+   "wait": "keep the same cash for N sessions; endpoint value = cash (yield 0)",
+   "label_buy": "y_buy(i) = 1 if (O[i+21]-5)(1-f) > (O[i+1]+5)(1+f) else 0; equivalently gross forward open-to-open return exceeds the round-trip cost c_rt(i) = (O[i+1]+5)(1+f)/((O[i+21]-5)(1-f)) - 1 evaluated on the realized path",
+   "determined_at": "open i+21 (label matures when i+21 <= training cutoff index)"
+  },
+  "state_holding": {
+   "sell": "receive (O[i+1]-5)(1-f) per share at open i+1 and hold cash to the endpoint",
+   "hold": "keep the share; liquidation-equivalent value at the endpoint (O[i+21]-5)(1-f) per share",
+   "label_sell": "y_sell(i) = 1 if (O[i+1]-5)(1-f) > (O[i+21]-5)(1-f), i.e. O[i+1] > O[i+21] (one exit fee is paid on either path, so the exit cost cancels; the comparison is the gross forward move)",
+   "determined_at": "open i+21",
+   "alternative_not_drafted": "hold valued at the marked open O[i+21] without liquidation equivalence (biases toward holding by one exit cost); bill to choose"
+  },
+  "note": "both labels are computed per share on the realized future path with the declared fill conventions; the realized ledger pays actual integer fees and may hold shorter or longer than N (see policy)"
+ },
+ "one_model_choice": {
+  "drafted_M1": "one L2 logistic regression (C = 1.0, standardized features from training-fold statistics) trained on y_buy; p(i) = P(y_buy = 1 | features_i)",
+  "action_rule": "cash: buy if p(i) > 0.5 else wait; holding: sell if p(i) < 0.5 else hold; threshold 0.5 fixed",
+  "declared_approximation": "the sell rule uses the net-of-round-trip label rather than the exact y_sell comparison, so it sells when the expected net 20-session return is negative; this biases toward selling by about c_rt relative to y_sell",
+  "alternative_not_drafted": "two heads on one feature set (buy head on y_buy, sell head on y_sell); bill said one model, so listed only"
+ },
+ "policy_and_repeated_trading": {
+  "daily_re_decision": "every close re-decides; a position opened at open i+1 can be sold at any later open j+1 where p(j) < 0.5 and re-entered later; each switch pays fee and tick in the ledger",
+  "holding_state_deposits": "while holding, target weight 1 each day so new deposits are deployed at the next open (R1-like); while in cash, deposits accumulate idle",
+  "horizon_mismatch": "labels value N-session holds; the realized policy's holding periods are emergent and will differ; the ledger measures the realized path, not the label economics",
+  "alternative_not_drafted": "forced N-session hold after each buy (no sell decision before the endpoint) which matches the label economics but removes learned exits"
+ },
+ "features_at_close_i": ["log returns over 1, 5, 20, 60, 120, 250 sessions (adjusted C)", "drawdown from the 250-session high", "C/MA50 - 1, C/MA200 - 1", "20-session realized standard deviation of daily log returns", "frozen EWMA h_i and cell v_i", "sessions since the last 60-session high (capped 60)", "current state indicator (holding or cash) is NOT a feature: the label does not depend on it and the model is shared"],
+ "feature_rules": "past-only; standardization from the training fold only; fixed set, no selection",
+ "training_and_maturity": {
+  "walk_forward": "yearly refit, expanding window from 2003-08-01; for test year y (2015..2023) train on decisions i with i + 21 <= first session index of y (purge = 21 sessions); predictions for year y use that single fit",
+  "unmatured_labels": "never enter training; decision inputs never include any label or outcome",
+  "fixed_hyperparameters": "C = 1.0, max_iter 1000, lbfgs (sklearn LogisticRegression) or numpy IRLS fallback; no tuning; single fit per fold",
+  "post_hoc_validation_2024_04_onward": "frozen-rule walk-forward validation on 2024-04-01 .. 2026-11-05 using the model fit on labels matured before 2024-04-01, refit yearly on 2025-01-02 and 2026-01-02 with the same rule; this window has been viewed repeatedly in earlier research and is NOT an unobserved seal",
+  "prospective_validation": "from the first session after bill approval, record each day's p(i) and action before the outcome exists (append-only log with hashes); evaluate as labels mature; this is the only genuinely new validation and it starts empty"
+ },
+ "baselines_identical_mechanics": {"R1": "always long, daily full deployment", "R0": "always cash", "R3": "MA200 in/out (buy when C > MA200, sell all when C < MA200)"},
+ "evaluation": {
+  "primary": "post-cost ledger per fold year 2015..2023 and pooled: PnL (won), PnL % of deposits, max drawdown, exposure, number of buys/sells, fees, ticks; M1 vs R1 / R0 / R3; then the 2024-04+ frozen-rule table side by side",
+  "secondary": "label base rate per fold, accuracy, AUC (descriptive), share of days long, realized holding period distribution",
+  "exclusions": "no p-values treating days as independent; no horizon/threshold/feature/hyperparameter selection after results; no attribution of failure to overfitting without evidence; no claim of live edge"
+ },
+ "resources": {"cpu_threads": 2, "external_timeout_seconds": 600, "fits": "9 development folds + 3 post-hoc refits = 12 fits of one logistic model", "api_calls": 0, "orders": 0, "gpu": 0},
+ "verification_required": ["synthetic label fixtures: hand-computed y_buy / y_sell on a few prices incl. ties and the cost boundary", "purge test: a decision whose label matures after the cutoff is excluded from training; perturbing prices after the cutoff cannot change the fitted model or any decision before it", "policy/ledger fixtures: buy then sell then re-buy with exact integer costs; holding-state daily deployment; cash-state idle accumulation", "walk-forward fold boundaries by hand on a synthetic calendar", "IRLS vs sklearn agreement on a small fixture (if sklearn used)", "real selftest limited to hashes/calendar/counts; no real fit before bill's code review"],
+ "deliverables": ["timing_v2.py (features, labels, folds, M1, policy, ledger, selftest)", "development artifact 2015..2023 after code review", "post-hoc 2024-04+ artifact in the same run, clearly labelled frozen-rule validation", "prospective log scaffold (no orders)", "owner report in won vs R1 with drawdowns"],
+ "open_choices_for_bill": ["sell label with liquidation-equivalent hold (drafted) vs marked hold", "one model on y_buy with 0.5 rules (drafted) vs two heads", "daily re-decision (drafted) vs forced N-hold", "refit schedule inside 2024-04+ (yearly drafted) vs none", "whether R3 stays as a rule baseline"]
+}

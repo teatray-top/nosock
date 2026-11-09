@@ -1,0 +1,69 @@
+{
+ "version": "allocate-v1-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_RUN",
+ "created_at_utc": "2026-11-06T07:25:00+00:00",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "purpose": "Compare two ledgers that differ only in the position-size target: constant state vs EWMA state from state-vol-v1 stored forecasts. Same deposits, costs, rule mechanics, periods. Descriptive comparison; no profit claim; no live orders.",
+ "parents": {
+  "state_results": {"path": "%USERPROFILE%\\Documents\\Codex\\2026-11-05\\x20-teatray-top-irc\\work\\state_vol_v1_20261106\\state_vol_v1_results.json", "sha256": "bc7eaf20e15bdbf0ce54399586171fc5f319d3d8fbe7b3a353de88e1b6985b1e", "use": "forecast_records: h_forecast.reference and h_forecast.ewma looked up by decision_session only; no recomputation of h"},
+  "state_spec": {"sha256": "5df26ad21d582694f4a425500727260b3d5f1f8bcfdce17d0c9a17b92fd57225"},
+  "raw_prices": {"path": "G:\\NoSock\\stock\\penny\\data\\kr_etf\\kodex_daily_raw.json", "sha256": "2da39950164f07a0d76cd8ec000c48cc4d5f90000f6a811f2490796988a9f4eb", "fields": "O, C unadjusted won; 5938 session days 2002-10-14..2026-11-05; day list identical to the adjusted series used by the state module (checked 2026-11-06)"},
+  "ladder_results": {"path": "G:\\NoSock\\stock\\penny\\runs\\ladder_kr_2026-11-06_v4.json", "sha256": "2ec040ae239ed0936919d43126b382ea8a80e7e587d7cd5ce58addbeea325971", "use": "consistency anchor: variant A must reproduce R1_buyhold exactly on common / bull_2025 / crash_2026"}
+ },
+ "price_convention": "Ledger uses raw unadjusted O/C in won (integer shares, real fees). State h comes from adjusted log returns (distribution-adjusted). Mixing is declared: h is a variance state, not a price; dividends paid in cash are not modelled in the ledger (same as ladder v2).",
+ "variants": {
+  "A_const_state": {"w_i": "min(1, sqrt(h_ref / h_ref)) = 1 for every decision session", "note": "identical to ladder R1_buyhold by construction (buy max whole shares when cash allows, never sell)"},
+  "B_ewma_state": {"w_i": "min(1, sqrt(h_ref / h_ewma_i))", "h_ewma_i": "forecast_records entry with decision_session == days[i] (its predicted_for_session == days[i+1]); information through session i only", "h_ref": "constant_calibration_second_moment h from the state envelope (2.1990e-04, sd 1.48%/day)", "note": "target volatility equals the calibration unconditional sd by construction; no new free parameter; de-risks only (w<1 when forecast sd exceeds 1.48%/day), never leverages"}
+ },
+ "only_difference_between_variants": "the number w_i used in target_qty; everything else byte-identical code path",
+ "mechanics": {
+  "inherits": "ladder_kr.py v2 rule_text.common",
+  "deposit": "10,000 won added at the start of every session in the period, including the last",
+  "decision": "at close of session i compute w_i from the state record with decision_session == days[i]",
+  "execution": "at open of session i+1: buy price O[i+1]+5, sell price O[i+1]-5, fee floor(0.015% x notional) won per side, no tax (KR ETF)",
+  "valuation_for_target": "W = cash + qty x O[i+1] (open, no tick); target_qty = floor(w_i x W / O[i+1])",
+  "sell_rule": "if target_qty < qty: sell (qty - target_qty) shares at O[i+1]-5 minus fee",
+  "buy_rule": "if target_qty > qty: buy min(target_qty - qty, largest q with q x (O[i+1]+5) + fee <= cash) shares",
+  "order_of_operations": "sells before buys (mutually exclusive here)",
+  "no_trade_band": "none beyond integer flooring (simplest axis first); churn is measured, a band is a later rung if needed",
+  "mark": "value at close of i+1 = cash + qty x C[i+1]; last session of period: deposit then mark at close i, no trade",
+  "idle_cash_yield": 0,
+  "pnl": "value - cumulative deposits; max drawdown on (value - deposits) with running peak starting at 0 (ladder convention)",
+  "exposure": "qty x C / value per marked session",
+  "missing_state_record": "abort run with availability_status=invalid_input; periods below are chosen so every decision session has a record"
+ },
+ "periods": {
+  "state_eval": ["2014-12-30", "2026-11-05"],
+  "common": ["2024-04-01", "2026-11-05"],
+  "bull_2025": ["2025-01-02", "2025-12-30"],
+  "crash_2026": ["2026-07-08", "2026-11-05"],
+  "note": "each period ledger starts from zero cash and zero shares; state_eval starts at the first decision session that has a forecast record (2014-12-30 -> 2015-01-02)"
+ },
+ "outputs": {
+  "per_period_per_variant": ["pnl_won_after_costs", "pnl_pct_of_deposits", "max_dd_won", "exposure_avg", "buys", "sells", "fees_total_won", "tick_cost_won", "turnover_won", "qty_end", "final_value", "w_mean", "w_min", "sessions_w_below_1"],
+  "paired": ["B minus A of (value - deposits) at period end", "min and max of the daily B minus A difference over the period", "number of sessions where B held fewer shares than A"],
+  "consistency_check": "A_const_state on common / bull_2025 / crash_2026 must equal ladder R1_buyhold exactly: pnl +4,779,819 / +1,154,595 / -124,863; buys 130 / 58 / 7; sells 0; max_dd -7,920,376 / -298,659 / -155,087",
+  "cost_diagnostics": "fees and tick cost are reported as labelled diagnostics only; every headline number is after costs",
+  "format": "envelope per contract v3 (module allocate_v1, UTC artifact_id, parent_artifact_hashes = [raw, state_results, state_spec, ladder_results] full hashes, availability_status, exchange_session KRX date sessions, decision_at previous_session_close marker, execution_not_before next_session_open marker, value_unit krw / shares declared per field), trade_records (session, side, qty, price, fee, w), daily_records (session, cash, qty, value, deposits, w), metrics",
+  "output_dir": "%USERPROFILE%\\Documents\\Codex\\2026-11-05\\x20-teatray-top-irc\\work\\allocate_v1_20261106",
+  "overwrite": false,
+  "write": "single xb write of the complete payload"
+ },
+ "verification_required": [
+  "hand fixture: 5 sessions, w sequence [1, 1, 0.5, 1] -> expected buys, one half-position sell with floored fee, rebuy; exact won values asserted",
+  "A_const_state reproduces ladder R1_buyhold on the three overlapping periods to the won",
+  "future perturbation: changing O/C/h for sessions > k leaves all trades and marks through session k unchanged",
+  "lookup causality: the record used at close i has decision_session == days[i] and predicted_for_session == days[i+1]; no field of session i+1 other than O[i+1] (execution) and C[i+1] (mark) is read before the trade",
+  "parent hashes unchanged; selftest passes from the chat folder copy: python -X utf8 work/allocate_v1_20261106/allocate_v1.py selftest"
+ ],
+ "resources": {"cpu_threads": 1, "external_timeout_seconds": 60, "experiments": 1, "variants": 2, "periods": 4, "ledgers": 8, "new_fit_optimizations": 0, "tuned_parameters": 0, "api_calls": 0, "orders": 0, "random_paths": 0},
+ "prohibited_in_this_run": ["choosing a target volatility, band, cap or lambda by looking at results", "adding entry/exit signals", "leverage or shorting", "new data collection", "any live or paper order", "calling the comparison a profit improvement"],
+ "interpretation": "All four periods were already viewed; the state module itself was specified after the 2026 crash was observed. Exploratory ledger comparison of a de-risking-only sizing rule against full investment. Not evidence of edge.",
+ "open_choices_for_bill": [
+  "weight formula: sd ratio sqrt(h_ref/h) (drafted) vs variance ratio h_ref/h (stronger de-risking)",
+  "valuation price for target_qty: O[i+1] open (drafted) vs C[i] close",
+  "primary period: state_eval 2014-12-30.. (drafted) vs common 2024-04-01..",
+  "whether to add R0 deposit-only line for context (not a variant)"
+ ]
+}

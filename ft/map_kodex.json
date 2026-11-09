@@ -1,0 +1,18 @@
+{
+ "note": "KODEX 200 (069500) merged from the three Toss 1m backfill runs; real UTC time; engine gap fill disabled through ft_nofill.py; borrowed Binance pair name; prices / 10000; volume unchanged",
+ "price_scale": 10000,
+ "time_axis": "real",
+ "snapshot_dir": "user_data/data_kodex/source_snapshot",
+ "window_kst": [
+  "2022-11-23",
+  "2026-11-05"
+ ],
+ "pairs": [
+  {
+   "symbol": "069500",
+   "name": "KODEX 200",
+   "source": "069500.csv",
+   "pair": "BAT/USDT"
+  }
+ ]
+}

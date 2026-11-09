@@ -1,0 +1,1 @@
+{"bars": "fixtures/fillgate_v1/data/binance/ALGO_USDT-5m.feather", "session_calendar": "fixtures/fillgate_v1/calendar.json", "scale": 10000, "runs": {"v1_gated": {"log": "fixtures/fillgate_v1/out/gated/gate_log.json", "result_dir": "fixtures/fillgate_v1/out/gated", "strategy": "FillGateFixture"}}, "out": "fixtures/check_log_fixture_v1.json"}

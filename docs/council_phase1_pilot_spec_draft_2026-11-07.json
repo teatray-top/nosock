@@ -1,0 +1,63 @@
+{
+ "version": "council-phase1-pilot-spec-draft-v2",
+ "status": "DOBBY_DOCUMENT_DRAFT_FOR_BILL_REVIEW_NOT_AN_EXECUTION_PERMISSION_NO_FIT_NO_ENCODING_NO_UPDATE_NO_LEDGER_NO_JEV_NO_API",
+ "revises": {"v1_draft": "work/council_phase1_f1f2_spec_draft_dobby_20261107.json sha256 57073bffdab5e1a36bef777ab4ae79f79d5a22c310ada74b976f9fe1af2a418d", "bill_review_points": ["quantile operating points use future scores: pilot uses p >= 0.5 only", "last 20 sessions have immature E_close20: predicted but excluded from scoring and from negative labels (also F2 query outcomes)", "resource arithmetic: dense codes 56 GiB / sparse 5.6 GiB for 10 versions; state fits up to 344,340 rows: split a small pilot from the later 5-replicate run", "pilot shape: replicate 0, two wirings, <= 256 rows per generated train path and 64 per check/test path pre-selected without labels, one 2026 forward fold, 7 fits, 8 preset F2 queries, CPU 1 / 300 s / RAM 2 GiB / output 256 MiB, sparse caches and abort rules"]},
+ "ownership": {"implementation_and_selftests": "dobby", "independent_review": "bill", "delegation": false},
+ "contract": {"path": "work/council_io_contract_v1_final_20261107.json", "sha256": "2603f7a077bf6497fb3eb303eaa5582fb1f3b1bda813f537e6962bd303299b8e"},
+ "mechanics_code": {"path": "work/council_io_fixture_v1/council_io_v1_final_bfdc7678.py", "sha256": "bfdc76784bdca92d7b93511ff4d286909ea609fa206d906b856b6e62b38ece4a"},
+ "inputs_pinned": {
+  "generated_manifest": {"path": "work/scenario_paths_v1_20261106/manifest.json", "sha256": "3befa44765f78e4b25e87f347cc955d4838ec308f241b55c1e5f299bb9c4e66e", "observed_hashes": "per path in the manifest, verified before any read", "hidden_use": "regime at the selected rows only, read by the state-target builder; never by encoder, forward-risk or retrieval code"},
+  "real_raw": {"path": "G:/NoSock/stock/penny/data/kr_etf/kodex_daily_raw.json", "sha256": "2da39950164f07a0d76cd8ec000c48cc4d5f90000f6a811f2490796988a9f4eb", "fetched_field": "2026-11-06T12:02:16 (KST assumed)"},
+  "real_adj": {"path": "G:/NoSock/stock/penny/data/kr_etf/kodex_daily_adj.json", "sha256": "844b27891727b1faa227ea3259cb47eee258f8bf85ec30a3fc6a41b5a299a609", "fetched_field": "2026-11-06T11:54:53 (KST assumed)"},
+  "real_vintage": "retrospective_latest_vintage; effective fetch = earliest file field; last complete session 2026-11-05; 2026-11-06 row dropped; label availability modeled = event end + 60 s (regular-session assumption, declared)",
+  "flybrake_reference": {"path": "G:/NoSock/stock/flybrake.py", "sha256": "f42e357c2d210529760db6f11efcd7d54ce2a8ee8bad42dd54b0b52468d9d1fa", "reused": "wiring semantics and sparse top-k code semantics only"},
+  "connectome": {"path": "G:/AI/NNN/connectome/mb_right.npz", "sha256": "f34fc891779a84d017e4dc67a60cd6e6fd072d7771ebd448ae2d447795362847"}
+ },
+ "eligibility_and_features": {"features": "council_io.features (10 dims, frozen order); eligible iff status ok", "real_eligible": "D >= 199 and D <= index(2026-11-05)", "maturity_split_real": "E_close20 is mature at the data end only for D <= index(2026-11-05) - 20; sessions with D in the last 20 are 'predict-only': scored outputs are written but excluded from every metric and never counted as negatives", "generated": "eligible per path by the same feature rule; E_close20 for generated paths is not used in the pilot"},
+ "label_free_row_preselection": {
+  "rule": "row positions are chosen from the eligible index list of each path by fixed stride before any label is read: stride = max(1, floor(n_eligible / m)); positions = eligible[0], eligible[stride], ... until m rows; m = 256 for train paths, 64 for check and test paths; the selection code never opens hidden/*.npz",
+  "counts": {"state_train_rows": "60 x 256 = 15,360", "state_check_rows": "20 x 64 = 1,280", "state_test_rows": "20 x 64 = 1,280", "real_rows_encoded": "all eligible real sessions (about 5,739) for the forward fold and F2"},
+  "recorded": "the selected positions per path are written to the results with the manifest hash so bill can reproduce the selection"
+ },
+ "encoder_pilot": {
+  "replicate": 0,
+  "scaler": "per-feature mean and population std on eligible real sessions D <= 2014-12-30 only; arrays stored",
+  "projection_P": "344 x 10 Gaussian N(0, 1/10) from default_rng(SeedSequence([20261107, 80, 0])) (80 = declared code for 'P'); shared by both wirings",
+  "wirings": {"connectome": "PN->KC from mb_right.npz, row-normalised (flybrake.wiring semantics re-implemented, hash-checked input)", "rewired": "per-row degree-matched random rewiring from SeedSequence([20261107, 87, 0]) (87 = declared code for 'W'); same P, scaler, data order and readout initialisation"},
+  "activation": "pn = relu(x_scaled @ P.T); a = pn @ W.T (theta = 0 fixed); top-k k = 129; z = sparse / L2; all-non-positive a -> abstain row (counted, excluded from fits and retrieval)",
+  "identity": "encoder_version_id = sha256(code version, feature order, scaler arrays, P bytes, W bytes, theta bytes, k, constants, connectome sha); two versions in the pilot",
+  "storage": "sparse only: per code 129 int16 indices + 129 float32 values (774 bytes); dense activations exist only per batch of <= 1,024 rows (<= 10.6 MiB); caches work/council_phase1_pilot_v1/codes/{version_id}/{real|path_id}.npz written once",
+  "arithmetic": "codes: real 5,739 + generated 17,920 = 23,659 per version x 2 versions = 47,318 codes = about 35 MiB sparse; W 2,597 x 344 float32 = 3.6 MiB; peak RAM well under 2 GiB"
+ },
+ "F1_state_pilot": {
+  "target": "S_generated_state_at_D mapped down={descent,crash}, up={ascent,rebound}, neutral={sideways,highvol} (declared mapping); labels read only for the preselected rows",
+  "fits": ["Fly-connectome multinomial logistic readout on z (2,597 -> 3)", "Fly-rewired multinomial logistic readout", "native multinomial logistic on the 10 scaled features"],
+  "solver": "numpy full-batch gradient descent, L2 lambda = 1.0, learning rate 0.5 on mean loss, 200 iterations, zero init, float64 accumulators; deterministic; the same solver for all three",
+  "frozen_control": "untrained readout = chance (0 fits)",
+  "evaluation": "confusion matrix, per-class precision/recall, macro-F1 on check (1,280 rows) and test (1,280 rows) separately; per combination id breakdown; no threshold choice",
+  "fit_count": 3
+ },
+ "F1_forward_risk_pilot": {
+  "target": "E_close20 on real sessions via council_io.label_e_close20 and gated_label (replay clock)",
+  "fold": "2026 only: fit cutoff = modeled confirmation of the last session before 2026-01-02 (2025-12-30 15:31:00+09:00, B schedule); training rows = eligible real sessions whose E_close20 availability <= cutoff; scoring rows = eligible 2026 sessions with D <= index(2026-11-05) - 20 (mature at data end); predict-only rows = the last 20 eligible sessions (written, not scored)",
+  "fits": ["Fly-connectome logistic readout on z", "Fly-rewired logistic readout on z", "native logistic on the 10 scaled features", "T_forward LightGBM on the 10 features: binary objective, num_leaves 7, max_depth 3, learning_rate .05, min_data_in_leaf 200, lambda_l2 1, 200 rounds, seed 0, num_threads 1, deterministic, force_col_wise"],
+  "solver_logistic": "same numpy solver as the state pilot (binary)",
+  "operating_point": "p >= 0.5 only; no quantile thresholds in the pilot (a quantile threshold would need freezing on pre-cutoff data in a later spec)",
+  "metrics": "on the 2026 scored rows: positives, negatives, precision, recall, false-alarm rate at 0.5; log-loss and Brier reported with calibration_status uncalibrated; detection delay for events whose start lies in the scored set; the scored-set size and the predict-only count are reported",
+  "fit_count": 4
+ },
+ "F2_retrieval_pilot": {
+  "encoder": "connectome version, replicate 0",
+  "queries": "8 preset decision sessions chosen without labels: the first eligible session of each year 2019..2026",
+  "candidates": "real sessions s with s < D, E_close20 availability (replay clock) <= decision_at of D, same encoder version, finite non-zero code, outcome {event, ret20, max_dd} from council_io labels; council_io.retrieve k = 10, min_separation = 21, target E_close20",
+  "query_outcomes": "the realised E_close20 at D is reported only if mature at data end (D <= index(2026-11-05) - 20); otherwise marked immature and excluded from comparison",
+  "outputs": "per query: returned cases with similarity, label_end_index, outcome, max_drawdown_in_window; similarity_spread; eligible/returned counts; comparison of retrieved event share vs realised event where mature; descriptive only",
+  "fit_count": 0
+ },
+ "budget_and_caps": {"cpu_threads": 1, "external_timeout_seconds": 300, "ram_cap_bytes": 2147483648, "ram_check": "process RSS sampled after each batch/fit; exceeding the cap aborts", "output_cap_bytes": 268435456, "fits_total": 7, "encoder_versions": 2, "online_updates": 0, "ledgers": 0, "jev_calls": 0, "api_calls": 0, "orders": 0, "gpu": 0, "estimated_wall": "under 2 minutes (encoding 47k codes; 3 multinomial fits on 15,360 x 2,597 sparse-to-dense batches; 4 binary fits on <= 2,500 rows)"},
+ "abort_rules": ["any input hash mismatch before start", "any fit row whose label is not available at the fit cutoff", "any hidden/*.npz read outside the state-target builder", "time, RAM or output cap exceeded", "non-finite loss or code", "on abort: preserve partial outputs and a failure record; no retry, no changed settings"],
+ "outputs": {"directory": "work/council_phase1_pilot_v1/", "results": "council_phase1_pilot_results.json written once (xb) with all hashes, encoder version ids, row selections, metrics, F2 records and limitations", "runlog": "work/council_phase1_pilot_runlog_<UTC>.json outside the output directory: thread env, UTC start/end, exit, stdout/stderr, before/after hashes of code, inputs and connectome, RSS peak", "selftests_before_approval": "fixture-only: toy connectome (6 PN, 20 KC), toy paths <= 64 rows, toy real series <= 400 rows; checks: encoder determinism and version-id sensitivity to every component, rewiring degree match per row, scaler from prefix only, label-free preselection reproducibility, purge by availability clock at the 2026 cutoff, predict-only exclusion from metrics and negatives, retrieval candidate clocks, solver convergence on a separable toy, RAM/output cap enforcement with tiny caps"},
+ "follow_up_not_in_this_document": "the 5-replicate run (replicates 0..4, all 12 forward folds, full state rows) is a separate spec after the pilot audit; its resource plan must use sparse caches and streaming fits",
+ "limitations_stated_in_results": ["no real current-trend ground truth: state heads scored only on generated regimes under a declared mapping", "forward-risk results are one retrospective year on latest-vintage data with overlapping windows; no significance claim", "connectome vs rewired is one replicate pair in the pilot", "F2 similarity is resemblance, not prediction", "nothing here is an operating or profitability claim"],
+ "open_for_bill": ["solver: numpy gradient descent (200 iterations, lr 0.5) vs L-BFGS", "preselection stride rule as drafted", "the 8 F2 query sessions as drafted (first eligible session of 2019..2026)", "LightGBM comparison expert included (drafted yes, 1 fit)"]
+}

@@ -1,0 +1,15 @@
+{
+ "version": "nfi-x8-home-market-v1",
+ "status": "PREREGISTERED_BEFORE_ANY_NFI_RESULT",
+ "question": "Does NostalgiaForInfinityX8, unchanged, make money on its home market (Binance spot) over the same year as the freqtrade-strategies sweep?",
+ "source": "iterativv/NostalgiaForInfinity a8df33169210b818977012fc4ec264d7417f9de8, NostalgiaForInfinityX8.py (LF sha256 74b2b32f..., matches bill's pinned snapshot; the Windows checkout is CRLF)",
+ "engine": "freqtrade 2026.10, WSL venv, default backtesting (no ft_nofill: crypto markets are continuous)",
+ "configs": "NFI's own configs/trading_mode-spot.json + configs/exampleconfig.json + configs/blacklist-binance.json, then a pairlist override; exampleconfig values kept: max_open_trades 6, stake unlimited, tradable_balance_ratio 0.99, timeframe 5m, wallet 10000, limit orders on the other side of the book",
+ "pairs": "the 11 pairs we already hold data for that are in NFI's pairlist-backtest-static-binance-spot-usdt.json and not blacklisted: BTC ETH SOL XRP ADA DOGE LTC LINK AVAX DOT TRX /USDT (BNB/USDT is blacklisted by NFI); NFI's own backtest list has 160 pairs, which this PC cannot hold in memory (NFI docs recommend 96 GB)",
+ "timerange": "20251101-20261101; informative history extended (1d from 2023-08-01, 4h from 2025-06-01) because NFI applies startup_candle_count 800 to every informative timeframe",
+ "fee": "0.1% per side (Binance spot default taker)",
+ "memory_guard": "a 2-pair, 1-month probe measures peak memory first; the full run starts only if the projected peak stays under 16 GB (WSL total 27 GB); single process at nice 19",
+ "reported": ["trades", "profit %", "profit factor", "max drawdown (account)", "p-value", "market change", "exit reasons", "position adjustments (rebuys)", "fill physics"],
+ "decision_rule": "reference result for the home market only; a stock application is considered only if the home-market result is positive with profit factor > 1.1, and then only as a separate pre-registered rung (NFI depends on BTC context, rebuys and grind exits that need their own stock mapping)",
+ "no_claim": "one year, 11 pairs; NFI's published backtest summaries are simulations, not account records"
+}

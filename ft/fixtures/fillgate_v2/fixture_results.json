@@ -1,0 +1,17 @@
+{
+ "version": "fillgate-fixtures-v2",
+ "launcher_sha256": "d8503ae747fa7040e5a0a82d0105761aa40c75a91aac83e0425dc0545b8c11ac",
+ "v1_checks_rerun_same_trades": true,
+ "v2_checks": {
+  "blocked_last_bar_force_exit_not_filled": true,
+  "residual_position_preserved_in_launcher_ledger": true,
+  "engine_export_drops_the_open_trade_documented": true,
+  "v1_fill_log_matches_engine_trades": true
+ },
+ "coverage_checks": {
+  "missing_calendar_date": "SystemExit: session calendar lacks 1 data dates (fixtures/fillgate_v2/out/nocal/run.log)",
+  "missing_pair_file": "SystemExit: no 5m data file (out/nopair/run.log)",
+  "unregistered_traded_pair": "RuntimeError: pair ALGO/USDT is not registered in FILLGATE_PAIRS (out/nopair2/run.log)"
+ },
+ "all_pass": true
+}

@@ -1,0 +1,144 @@
+{
+ "calls": {
+  "load_data": 1,
+  "dataprovider_load_pair_history": 0,
+  "asof_merge": 0,
+  "fill_attempts": 11,
+  "fills_blocked": 7
+ },
+ "blocked": [
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-05 01:00:00+00:00",
+   "side": "sell",
+   "is_entry": false,
+   "price": 10.012,
+   "amount": 98.0,
+   "tag": "exit_signal",
+   "is_force_exit": false,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-05 06:20:00+00:00",
+   "side": "buy",
+   "is_entry": true,
+   "price": 10.076,
+   "amount": 98.0,
+   "tag": "",
+   "is_force_exit": false,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-05 06:20:00+00:00",
+   "side": "buy",
+   "is_entry": true,
+   "price": 10.076,
+   "amount": 98.0,
+   "tag": "",
+   "is_force_exit": false,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-06 01:00:00+00:00",
+   "side": "buy",
+   "is_entry": true,
+   "price": 10.512,
+   "amount": 94.0,
+   "tag": "",
+   "is_force_exit": false,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-06 01:00:00+00:00",
+   "side": "buy",
+   "is_entry": true,
+   "price": 10.512,
+   "amount": 94.0,
+   "tag": "",
+   "is_force_exit": false,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-11-19 07:20:00+00:00",
+   "side": "sell",
+   "is_entry": false,
+   "price": 11.076,
+   "amount": 89.0,
+   "tag": "exit_signal",
+   "is_force_exit": false,
+   "reason": "zero_volume"
+  },
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-11-19 07:25:00+00:00",
+   "side": "sell",
+   "is_entry": false,
+   "price": 11.077,
+   "amount": 89.0,
+   "tag": "exit_signal",
+   "is_force_exit": false,
+   "reason": "auction_bucket"
+  }
+ ],
+ "fills": [
+  {
+   "pair": "ALGO/USDT",
+   "trade_open_date": "2026-01-05 00:05:00+00:00",
+   "bar_utc": "2026-01-05 00:05:00+00:00",
+   "side": "buy",
+   "is_entry": true,
+   "price": 10.001,
+   "amount": 98.0,
+   "fee_rate": 0.0,
+   "fee": 0.0,
+   "tag": "",
+   "is_force_exit": false
+  },
+  {
+   "pair": "ALGO/USDT",
+   "trade_open_date": "2026-01-05 00:05:00+00:00",
+   "bar_utc": "2026-01-05 01:05:00+00:00",
+   "side": "sell",
+   "is_entry": false,
+   "price": 10.013,
+   "amount": 98.0,
+   "fee_rate": 0.0,
+   "fee": 0.0,
+   "tag": "exit_signal",
+   "is_force_exit": false
+  },
+  {
+   "pair": "ALGO/USDT",
+   "trade_open_date": "2026-11-19 06:20:00+00:00",
+   "bar_utc": "2026-11-19 06:20:00+00:00",
+   "side": "buy",
+   "is_entry": true,
+   "price": 11.064,
+   "amount": 89.0,
+   "fee_rate": 0.0,
+   "fee": 0.0,
+   "tag": "",
+   "is_force_exit": false
+  },
+  {
+   "pair": "ALGO/USDT",
+   "trade_open_date": "2026-11-19 06:20:00+00:00",
+   "bar_utc": "2026-11-20 00:00:00+00:00",
+   "side": "sell",
+   "is_entry": false,
+   "price": 11.5,
+   "amount": 89.0,
+   "fee_rate": 0.0,
+   "fee": 0.0,
+   "tag": "exit_signal",
+   "is_force_exit": false
+  }
+ ],
+ "open_trades_at_exit": [],
+ "note": "fills and open_trades_at_exit are the launcher's own ledger; the engine export can drop a trade whose final forced exit was blocked"
+}

@@ -1,0 +1,61 @@
+{
+ "calls": {
+  "load_data": 1,
+  "dataprovider_load_pair_history": 0,
+  "asof_merge": 0,
+  "fill_attempts": 2,
+  "fills_blocked": 1
+ },
+ "blocked": [
+  {
+   "pair": "ALGO/USDT",
+   "bar_utc": "2026-01-05 06:25:00+00:00",
+   "side": "sell",
+   "is_entry": false,
+   "price": 10.077,
+   "amount": 98.0,
+   "tag": "force_exit",
+   "is_force_exit": true,
+   "reason": "auction_bucket"
+  }
+ ],
+ "fills": [
+  {
+   "pair": "ALGO/USDT",
+   "trade_open_date": "2026-01-05 00:05:00+00:00",
+   "bar_utc": "2026-01-05 00:05:00+00:00",
+   "side": "buy",
+   "is_entry": true,
+   "price": 10.001,
+   "amount": 98.0,
+   "fee_rate": 0.0,
+   "fee": 0.0,
+   "tag": "",
+   "is_force_exit": false
+  }
+ ],
+ "open_trades_at_exit": [
+  {
+   "pair": "ALGO/USDT",
+   "open_date": "2026-01-05 00:05:00+00:00",
+   "amount": 98.0,
+   "open_rate": 10.001,
+   "filled_orders": [
+    {
+     "side": "buy",
+     "amount": 98.0,
+     "price": 10.001,
+     "filled": "2026-01-05 00:05:00+00:00"
+    }
+   ],
+   "open_orders": [
+    {
+     "side": "sell",
+     "amount": 98.0,
+     "price": 10.077
+    }
+   ]
+  }
+ ],
+ "note": "fills and open_trades_at_exit are the launcher's own ledger; the engine export can drop a trade whose final forced exit was blocked"
+}

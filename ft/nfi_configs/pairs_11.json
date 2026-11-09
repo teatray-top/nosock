@@ -1,0 +1,8 @@
+{
+  "exchange": {
+    "name": "binance",
+    "pair_whitelist": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT", "LTC/USDT", "LINK/USDT", "AVAX/USDT", "DOT/USDT", "TRX/USDT"]
+  },
+  "pairlists": [{"method": "StaticPairList"}],
+  "bot_name": "dobby_backtest_only_nfi"
+}

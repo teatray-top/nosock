@@ -1,0 +1,72 @@
+{
+ "note": "KR stocks fed to freqtrade under borrowed Binance spot USDT pair names (the engine only accepts listed markets). Each borrowed market has amount step 1 (integer shares), price precision <= 1e-4 and price max 1000. Prices are divided by price_scale = 10000 (1 unit = 10,000 won, 0.0001 = 1 won); volume is unchanged (shares). Stake currency USDT = units of 10,000 won. Universe = the 10 largest traded values in the stored Toss 1m files 2026-01-12..2026-11-05, chosen before any backtest. time_axis=real: bars keep their real UTC start times; gaps are NOT filled by the engine because the backtest runs through ft_nofill.py (load_data fill_up_missing=False). Source files come from the fixed snapshot user_data/data_kr_c/source_snapshot/ cut to the KST window 2026-01-12..2026-11-05.",
+ "price_scale": 10000,
+ "pairs": [
+  {
+   "symbol": "000660",
+   "name": "SK hynix",
+   "source": "000660.csv",
+   "pair": "DOGE/USDT"
+  },
+  {
+   "symbol": "005930",
+   "name": "Samsung Electronics",
+   "source": "005930.csv",
+   "pair": "BAT/USDT"
+  },
+  {
+   "symbol": "009150",
+   "name": "Samsung Electro-Mechanics",
+   "source": "009150.csv",
+   "pair": "ARK/USDT"
+  },
+  {
+   "symbol": "005380",
+   "name": "Hyundai Motor",
+   "source": "005380.csv",
+   "pair": "ADX/USDT"
+  },
+  {
+   "symbol": "402340",
+   "name": "SK Square",
+   "source": "402340.csv",
+   "pair": "DUSK/USDT"
+  },
+  {
+   "symbol": "034020",
+   "name": "Doosan Enerbility",
+   "source": "034020.csv",
+   "pair": "EDU/USDT"
+  },
+  {
+   "symbol": "006400",
+   "name": "Samsung SDI",
+   "source": "006400.csv",
+   "pair": "CHZ/USDT"
+  },
+  {
+   "symbol": "066570",
+   "name": "LG Electronics",
+   "source": "066570.csv",
+   "pair": "CKB/USDT"
+  },
+  {
+   "symbol": "035420",
+   "name": "NAVER",
+   "source": "035420.csv",
+   "pair": "COTI/USDT"
+  },
+  {
+   "symbol": "042700",
+   "name": "Hanmi Semiconductor",
+   "source": "042700.csv",
+   "pair": "CTSI/USDT"
+  }
+ ],
+ "time_axis": "real",
+ "window_kst": [
+  "2026-01-12",
+  "2026-11-05"
+ ],
+ "snapshot_dir": "user_data/data_kr_c/source_snapshot"
+}

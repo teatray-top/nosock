@@ -1,0 +1,82 @@
+{
+ "version": "desk-rules-v1.6-draft",
+ "status": "DOBBY_DRAFT_FOR_OWNER_AND_BILL_ONE_PAGE_OPERATING_RULES_MATCHED_TO_WRAPPER",
+ "supersedes": "desk_rules_v1_5_draft_dobby_20261107.json (6965626f)",
+ "wrapper": {
+  "path": "G:/NoSock/stock/penny/dobby_kr.py",
+  "sha256_prefix": "60649952",
+  "rule_core_sha256_prefix": "09d0cf42",
+  "approved_core_sha256_prefix": "d65ce644",
+  "review_copy": "work/dobby_kr_wrapper_v1/dobby_kr_60649952.py"
+ },
+ "scope": "the KR daily loop on 069500 (KODEX 200) only; paper mode by default; live only after the owner writes DOBBY_LIVE=1 in the channel",
+ "capital": {
+  "account": "owner's Toss KR account cash plus the daily 10,000 won refill (paper: paper_deposit row per decision session)",
+  "instrument": "069500 only; fixed in code",
+  "position": "either all cash or all-in 069500 (integer shares affordable with fee); while held with weight 1 and no limit, new cash is invested at the next open (top-up); no leverage, no short, no derivatives"
+ },
+ "signal": {
+  "rule": "EMA ribbon 8 > 21 > 50 > 200 on adjusted closes from the series origin 2002-10-14 (rule core 09d0cf42 rejects any other start): weight 1 when fully stacked, else 0",
+  "decision_time": "15:35 KST on each trading session, only on a completed daily bar (fetched after 15:31); the wrapper refuses to decide before 15:31:00 and records too_early; when the provider has no bar for today at 15:35 the loop records no_close_yet with the provider snapshot (this row is the same-day evidence used by the freshness check)",
+  "execution": "next trading session inside 09:00:30..09:10:00 KST only; the session must be proven by a same-day orderbook timestamp at or after 09:00:00 and at most 120 s old; the pending decision must come from the previous weekday (no weekday between the decision day and today), otherwise it is dropped without an order; market buy of the affordable integer quantity when weight 1 and not no_buy; market sell of the whole holding when weight 0 and held, or while a drawdown pause holds shares; nothing otherwise; the window and the orderbook age are re-checked at the orderbook receipt and immediately before the fill/order",
+  "evidence": "retrospective ledger 2014-12-30..2026-11-05: +48,095,602 won (99.5% from 2025-2026), max drawdown -14,865,836, exposure 39%, TWR +200.9% (always-long +243.4%), unit drawdown -24.5% (always-long -42.9%); plateau and delay/cost stress passed on the same history; one same-data history, not a forward guarantee"
+ },
+ "limits": {
+  "daily_loss": "coded: period_return = value_ex_flows / previous decision value - 1, with value_ex_flows = value minus all paper deposits recorded since the previous decision; period_return < -3% -> no_buy for the next execution (no new buy, no top-up); an existing holding follows the rule weight",
+  "drawdown": "coded: unit_index (compounded period returns) < 85% of its running peak -> weight 0, no_buy, pause row with reason drawdown; while that pause holds shares, each proven session's execution window sells the whole holding (standing flatten intent, not subject to signal expiry); decide records paused_skip; the pause survives restarts; only the owner resumes with dobby_kr.py resume",
+  "order_anomaly": "coded (live only): order status not FILLED after the 90 s wait -> pause row and alert",
+  "kill_switch": [
+   "stale data: no complete bar by 15:40 or no orderbook at execution -> no order, alert",
+   "unconfirmed or stale decision: fails closed as above",
+   "window: no order outside 09:00:30..09:10:00 KST",
+   "drawdown and order anomaly: pause as above"
+  ],
+  "broker_side": "where Toss allows, set an account-level daily order cap for 069500 equal to the loop's size; this is a wall, the loop's checks are only rules"
+ },
+ "records": {
+  "ledger": "runs/dobby_kr_ledger.jsonl append-only: loop_start, paper_init, paper_deposit, decision (EMAs, trend, w_rule, w, limits, no_buy, period_return, unit_index, unit_peak, value_before_deposit, deposit, value, fetched_at, provider_snapshot, series_snapshot, revisions), execution (ask/bid, quantity, fee, or action none with reason), execution_skip with reason and detail, too_early, no_close_yet (with provider snapshot), paused_skip, pause, resume, revision, error; decision rows add value_ex_flows, flows_since_prev_decision, recorded_deposits and receipt (raw/adj requested_at and received_at); execution rows add purpose (rule or drawdown_flatten) and session evidence (orderbook timestamp, requested_at, received_at, age)",
+  "snapshots": "data/kr_etf/snapshots/: provider_1d_<day>_<hhmmss>.json = raw candle responses as received with fetched_at; live_daily_{raw,adj}_<day>_<hhmmss>.json = merged operating series used for the decision; sha256 of each in the ledger row",
+  "channel": "one line per decision and per execution in #bigmoney; alerts (limits, unconfirmed decision, pause, revision) immediately",
+  "weekly": "every Sunday 18:00 KST: paper/live results vs the rule core applied to the snapshot series for the same sessions (consistency check), posted to the channel"
+ },
+ "promotion_ladder": [
+  {
+   "rung": 1,
+   "name": "paper",
+   "condition_to_advance": "10 trading sessions logged with every decision matching the rule core applied to the snapshot series (zero mismatches) AND bill's wrapper review items closed; the 10-session match is necessary, not sufficient",
+   "capital": "none"
+  },
+  {
+   "rung": 2,
+   "name": "live",
+   "condition": "owner writes DOBBY_LIVE=1 in the channel after rung 1 evidence is posted",
+   "capital": "the account as is (small); no size ramp needed"
+  },
+  {
+   "rung": 3,
+   "name": "review",
+   "condition": "every Sunday; demote to paper on any kill-switch trigger or a rule-code change until the change is reviewed"
+  }
+ ],
+ "change_control": "the rule, its parameters and the limits change only by a new spec with hashes reviewed by bill; no parameter change after seeing live results without a written spec",
+ "not_covered": [
+  "other instruments",
+  "intraday trading",
+  "the research council axes (T, Fly, Jev) until they pass their own gates",
+  "live flows: in live mode the owner's real deposits are not separated from returns, so the live limits would mis-measure period_return until a deposit record exists (paper mode is exact because the paper_deposit row is known)",
+  "any claim of future profit",
+  "a missed 15:35 decision (all retries failed) means no paper deposit that day, so the paper account can lag the backtest's one deposit per close",
+  "holidays: there is no KRX calendar; a decision before a holiday is dropped by design (one-session delay of a position change; measured cost -66,723 won over 2015-2026)"
+ ],
+ "changes_from_v1_3": [
+  "current session must be proven at execution: the orderbook timestamp must be today, at or after 09:00:00, and at most 120 s older than the receipt; otherwise execution_skip (not terminal, the decision waits). A Saturday or holiday orderbook carries the last session's timestamp (checked on the real Saturday response: 2026-11-06T15:30:28)",
+  "a decision rejected as stale or unconfirmed is consumed (terminal skip), so it never executes later and does not repeat every morning",
+  "flows are reconstructed from the ledger: value_ex_flows = value minus every paper_deposit recorded after the previous decision (including a deposit written by an interrupted attempt); an interrupted retry now gives the same -4% and no_buy as the uninterrupted run",
+  "drawdown flatten is a standing intent, separate from signal expiry: while the pause reason is drawdown and shares are held, every execution window on a proven session sells the whole holding (purpose drawdown_flatten), whether or not the decision that triggered it is still fresh; other pause reasons (order_anomaly) block buys without forcing a sale",
+  "every provider request records requested_at and received_at (milliseconds) for the raw and adjusted responses; a decision requires both requests at or after 15:31:00 of the decision day (incomplete_receipt otherwise); orderbook requested_at/received_at/timestamp are stored with each execution",
+  "the 15:35 decision is retried every 120 s until 15:45 on an error, no_close_yet or incomplete_receipt; each attempt is a ledger row"
+ ],
+ "changes_from_v1_5": [
+  "the execution window is re-checked three times (bill 02:19): at the start, at the orderbook receipt (received_at must be inside 09:00:30..09:10:00), and immediately before the paper fill or the live order (clock inside the window and orderbook timestamp at most 120 s old at that moment); in live mode the last check runs after the sellable-quantity call, right before the order is sent; any failure is a non-terminal execution_skip with the checked time"
+ ]
+}

@@ -1,0 +1,5 @@
+{
+  "exchange": {"name": "binance", "pair_whitelist": ["BTC/USDT", "ETH/USDT"]},
+  "pairlists": [{"method": "StaticPairList"}],
+  "bot_name": "dobby_backtest_only_nfi_probe"
+}

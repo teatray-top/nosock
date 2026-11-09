@@ -1,0 +1,14 @@
+{
+ "version": "freqtrade-rung2-v1",
+ "status": "PREREGISTERED_BEFORE_ANY_RUNG2_RESULT",
+ "parent": "sweep_spec_v1_3_1.json; advancing strategies by its pre-registered rule: mabStra (4h) and AdxSmas (1h). AverageStrategy (+70.88% on 26 trades) did not meet trades >= 30 and is not tested here",
+ "question": "Do the two advancing strategies, unchanged, make money on KODEX 200 (069500), an instrument never used in the sweep, in a period never used in the sweep?",
+ "instrument": {"symbol": "069500", "name": "KODEX 200 ETF", "source": "Toss 1m backfill runs data/kr_etf/1m_backfill_20261106_125425, _130852, _20261107_023458 (964 sessions 2022-11-23..2026-11-05, complete against the daily calendar, 7 special sessions kept as they are)", "borrowed_pair": "BAT/USDT", "price_scale": 10000, "time_axis": "real UTC, engine gap fill disabled through ft_nofill.py"},
+ "windows": {"A_holdout": "2022-11-23..2025-12-31 (never used by any sweep run)", "B_same_period": "2026-01-12..2026-11-05 (same period as the sweep, different instrument)"},
+ "engine": "freqtrade 2026.10 via ft_nofill.py, strategies unchanged from freqtrade-strategies f3340ce",
+ "settings": {"max_open_trades": 1, "max_open_trades_reason": "one instrument; with 2 slots and unlimited stake the engine would put only half the wallet in the single trade", "stake_amount": "unlimited", "tradable_balance_ratio": 0.99, "wallet": 1000, "fee_per_side": 0.00015, "fee_reason": "ETF: 0.015% commission each side, no securities transaction tax on ETF sales"},
+ "checks": "fill physics per run (time in input, price inside bar range, no zero-volume bar fill); KODEX zero-volume minutes are the 15:21-15:29 closing-auction filler (the 15:30-labelled minute holds the auction print)",
+ "benchmark": "buy-and-hold of KODEX 200 over the same window (engine market change), shown next to every result",
+ "decision_rule": {"paper_candidate": "window A: profit > 0 AND profit factor > 1.1 AND trades >= 30 AND fill violations 0; window B reported for consistency only", "beats_holding": "stated separately; a strategy below buy-and-hold is not called better than holding", "no_edge_claim": "even a pass here is one instrument and one holdout window; it leads to paper trading with the desk rules, not to live money"},
+ "outputs": "results/rung2_v1/<window>/<strategy>/, results/rung2_v1_summary.json"
+}

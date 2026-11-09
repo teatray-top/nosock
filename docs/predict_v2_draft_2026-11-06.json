@@ -1,0 +1,38 @@
+{
+ "version": "predict-v2-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_RUN_NO_FIT",
+ "created_at_utc": "2026-11-06T08:12:00+00:00",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "purpose": "One added element over predict-v1: a single conditioning feature for the expected open-to-open simple price return, estimated with the same expanding conditional-mean estimator as P2, scored against P1 for incremental conditional predictive content. Forecast study only; no h combination, no allocation change, no orders.",
+ "parent_results": {"predict_v1": "01601fb90442bf0f0958f3670f293ae0cbcff35e60d985d1e9ee7478d38284ba", "predict_v1_spec": "4d05b55bdfd1bedb80972388695ecbf8610c6acabcdb309d47267b6b8bf8d747"},
+ "unchanged_from_predict_v1": ["raw O target y_j = O[j+2]/O[j+1] - 1", "decision at close i; pool j >= 199 and j+2 <= i; j = i-1 excluded", "update order: matured label j = i-2 assigned to the cell observed at its own decision j, then current cell, then emit", "common eligible pool j >= 199 for all variants", "entry_session >= 2015-01-01 scored; 2906 predictions, 2905 scored, 1 pending", "metrics family: MSE, paired differences whole and by entry year, uncentered cross moment, centered covariance, sign accuracy (mu != 0, y != 0), mu mean/sd, counts; no OLS, p-values, PnL", "resources: CPU 1, external timeout 60, optimizer fits 0, expanding means only, API 0, orders 0", "selftest: synthetic fixtures/perturbations/envelope only; real data hashes/calendar/counts only"],
+ "new_element": {
+  "name": "P3_sign_prev_return_conditional_mean",
+  "feature": "c_i = 1 if adjusted C[i] > adjusted C[i-1] else 0 (equality -> 0); the sign of the latest completed adjusted close-to-close return, observed at close i",
+  "why_this_first": "simplest conditioning variable that is fresh at close i (P2's MA200 regime is slow-moving); adjusted closes avoid distribution-date gaps; two cells keep the estimator identical to P2 so only the conditioning variable changes",
+  "mu_hat": "expanding mean of y_j over the common mature pool with c_j == c_i; if the cell is empty use the contemporaneous P1 mean (count), 0 if P1 also empty",
+  "sample_invariant": "n_cell0 + n_cell1 == n_P1 at every decision",
+  "design_constants": "two cells by strict sign; no magnitude threshold; not tuned"
+ },
+ "variants_in_run": ["P0_zero", "P1_expanding_mean", "P2_ma200_conditional_mean (recomputed identically for paired comparison, not re-scored as a new finding)", "P3_sign_prev_return_conditional_mean"],
+ "primary_comparison": "mean paired squared-error difference P3 - P1, whole period and by entry year (incremental content of the sign cell over the unconditional mean)",
+ "secondary_comparisons": ["P3 - P0", "P3 - P2 (descriptive)", "cell diagnostics: samples per cell at first scored decision and at the end; final per-cell pool means (descriptive, computed from stored records, never fed back)"],
+ "pre_declared_scale": "If the in-sample close-to-close AC1 of about -0.05 seen in market_model carried fully into the open-to-open target, the MSE reduction over P1 would be of order 0.25%; the target skips the close-to-open gap, so less is expected. Any smaller or opposite-signed result is a legitimate outcome, not a bug.",
+ "verification_required": [
+  "synthetic fixture: cells by hand incl. equality -> 0, cell attribution at the label's own decision j, exact P3 means, P1 fallback when a cell is empty, pool invariant",
+  "perturbation: changing adjusted C after k leaves decisions <= k unchanged; changing adjusted C[k] may change decision k's cell only; raw O perturbations as in predict-v1",
+  "constant-price case through build_payload (null ratios preserved in JSON, '해당 없음' in summary)",
+  "real data: hashes (raw, adjusted, spec) before and after, calendar facts equal to predict-v1 spec values, counts; no real-data estimation in selftest",
+  "P1 and P2 real-data outputs must equal predict-v1 stored values to the float (regression check against 01601fb9) before the new variant is scored"
+ ],
+ "outputs": {"output_dir": "%USERPROFILE%\\Documents\\Codex\\2026-11-05\\x20-teatray-top-irc\\work\\predict_v2_20261106", "overwrite": false, "write": "single xb", "envelope": "contract v3; parents raw, adjusted, spec, predict_v1_results (regression anchor)"},
+ "prohibited_in_this_run": ["choosing the feature, cell count or threshold after outcomes", "adding more than this one feature", "combining mu with state h or allocation weights", "live or paper orders", "calling an MSE or cross-moment difference a trading edge"],
+ "alternatives_not_run_listed_for_bill": [
+  "three cells by magnitude of the latest adjusted return (< -1%, within 1%, > +1%) with 1% as a design constant",
+  "12-month (250-session) momentum sign C[i] > C[i-250] (slow trend like MA200; expected to overlap P2)",
+  "drawdown state C[i]/max(C[<=i]) - 1 below -10% (dip logic of ladder R4)",
+  "volatility state from state-vol-v1 (requires separate approval of h use)"
+ ],
+ "open_choices_for_bill": ["sign of adjusted close-to-close (drafted) vs raw", "two cells (drafted) vs three magnitude cells", "keep common pool j >= 199 (drafted) vs feature-specific pool", "include P2 recomputation in the run (drafted) or compare P3 only against stored predict-v1 P1/P2"]
+}

@@ -1,0 +1,29 @@
+{
+ "version": "freqtrade-sweep-v1",
+ "status": "PREREGISTERED_BEFORE_ANY_SWEEP_RESULT",
+ "question": "Do the official freqtrade-strategies (unchanged source, original timeframe, ROI, stoploss, trailing and exit settings) make money (a) on their home market and (b) on KR stocks with KR costs?",
+ "engine": "freqtrade 2026.10, WSL Ubuntu Python 3.12.3 venv, ccxt 4.5.92, TA-Lib 0.8.3",
+ "source": "freqtrade/freqtrade-strategies f3340ce11f5bdf62f598522e64d1f5638eaa13f5, user_data/strategies (files copied unchanged)",
+ "included": "every IStrategy class outside lookahead_bias/ and futures/ except the exclusions below (52 classes, DoesNothingStrategy kept as a null control)",
+ "excluded": {
+  "lookahead_bias/": "folder of known look-ahead examples",
+  "futures/": "futures and short strategies; the account is long-only spot",
+  "AlmgrenChrissStrategy": "can_short=True execution-algorithm demo",
+  "TWAPStrategy": "can_short=True execution-algorithm demo",
+  "FixedRiskRewardLoss": "no timeframe declared (custom-stoploss example)",
+  "Freqtrade_backtest_validation_freqtrade1": "engine validation fixture, not a strategy"
+ },
+ "common": {"max_open_trades": 2, "stake_amount": "unlimited", "tradable_balance_ratio": 0.99, "wallet": 1000, "timeframe": "taken from each strategy (not set in the config)", "cache": "none", "export": "trades"},
+ "markets": {
+  "binance_home": {"pairs": ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT", "LTC/USDT", "LINK/USDT", "AVAX/USDT", "DOT/USDT", "TRX/USDT"], "timerange": "20251101-20261101", "data_download": "20250901-20261101 so startup candles exist before the window", "fee_per_side": 0.001},
+  "kr_top10": {"mapping": "map_kr_top10.json (10 largest traded values in the stored Toss 1m files, chosen before any backtest; borrowed Binance pair names, prices / 10000, volume unchanged)", "timerange": "20260112-20261106", "fee_per_side": 0.00115, "fee_note": "0.015% fee each side + 0.20% sell tax = 0.23% round trip, split evenly per side", "informative_pairs": "strategies that request BTC/USDT or ETH/USDT informative data fail on this market until a market proxy is mapped; failures are recorded, not patched"}
+ },
+ "recorded_per_run": ["trades", "total profit % after costs", "profit factor", "max drawdown % (account)", "mean profit p-value", "market change % (average of the pairs over the window)", "CAGR", "status (ok / error with message)"],
+ "decision_rule": {
+  "no_edge_claim": "no strategy is called an edge from this sweep alone: 52 strategies x 2 markets are tested on one window each",
+  "multiple_testing": "a per-strategy p-value below 0.05/52 = 0.00096 is required before calling a result unlikely by chance",
+  "advance_to_next_rung": "KR stock-cost profit > 0 AND profit factor > 1.1 AND trades >= 30; advancing strategies are re-tested on a second window and on KODEX 200 before any paper use",
+  "comparison": "each result is shown next to the market change of the same pairs and window; a strategy that is mostly in cash is not called better than holding unless its profit exceeds the market change"
+ },
+ "outputs": "results/sweep_v1/<market>/<strategy>/ (freqtrade result zip + meta), results/sweep_v1/logs/, results/sweep_v1_summary.json"
+}

@@ -1,0 +1,17 @@
+{
+ "version": "nfi-x8-kodex-v1",
+ "status": "PREREGISTERED_BEFORE_ANY_KODEX_NFI_RESULT",
+ "trigger": "nfi_spec_v1 decision rule met on the home market (+7.14%, PF 252.99, 12 trades, results/nfi_v1 19d4bbef)",
+ "question": "Does NostalgiaForInfinityX8, unchanged, make money on KODEX 200 (069500) with session-correct informative data?",
+ "strategy": "NostalgiaForInfinityX8 a8df3316 unchanged (LF 74b2b32f); NFI configs trading_mode-spot + exampleconfig + blacklist-binance, pair list overridden",
+ "launcher": "ft_kr.py: (1) fill_up_missing=False on history.load_data and dataprovider.load_pair_history (as ft_nofill.py); (2) freqtrade.strategy.strategy_helper._merge_prepared_informative_pair replaced by a backward as-of merge on the informative completion stamp (date + informative timeframe - base timeframe, the engine's own date_merge), so a daily or afternoon 4h bar whose stamp falls in closed hours reaches the next real base candle instead of vanishing (bill 04:16, review 91cf821b); no closed-hour candles are created",
+ "parity_gate": "ft_kr.py must reproduce the home-market NFI result exactly on the continuous Binance data (same 12 trades, same final balance); otherwise the KODEX runs do not start",
+ "instrument": "KODEX 200 from the fixed 1m snapshot (ee10cfe3), real UTC time, borrowed pair BAT/USDT, prices / 10000; all timeframes (5m, 15m, 1h, 4h, 1d) are built from the same 1m source; data in a separate directory user_data/data_kodex_nfi/binance",
+ "btc_context": "NFI reads BTC/USDT 4h as market context; for KODEX this is mapped to KODEX 200's own 4h bars stored under the BTC_USDT-4h name (declared substitution: the market index ETF stands in for the crypto market leader)",
+ "windows": {"A2": "2024-01-02..2025-12-30 (starts about 13 months after the first 1m session so daily indicators have history; a past window not used by the 52-strategy sweep)", "B": "2026-01-12..2026-11-05"},
+ "settings": {"fee_per_side": 0.00015, "variants": {"nfi_default": "max_open_trades 6 (NFI exampleconfig; one instrument means one trade of 1/6 of the wallet at a time)", "single_slot": "max_open_trades 1 (the whole wallet in the single instrument)"}, "wallet": 10000, "stake": "unlimited"},
+ "checks": ["order-level fill physics: every order's fill price inside its 5m bar range, fill bar volume > 0 (KODEX zero-volume minutes are the 15:21-15:29 closing-auction filler)", "informative merge check: on 5 sample sessions the 1d values seen at 09:00 KST equal the previous session's completed daily bar"],
+ "comparison": "hold and the EMA ribbon on the same basis as compare_kodex_v1_1 for the same windows",
+ "decision_rule": "window A2 single_slot: profit > 0, profit factor > 1.1, trades >= 10 (NFI trades rarely; the 12-trade home result sets the scale), zero fill violations -> paper-trade candidate alongside the ribbon; below holding or the ribbon in both windows -> reference only",
+ "no_claim": "one instrument, two windows, a strategy tuned for crypto; descriptive only"
+}

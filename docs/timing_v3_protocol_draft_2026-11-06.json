@@ -1,0 +1,49 @@
+{
+ "version": "timing-v3-protocol-draft",
+ "status": "DOBBY_DRAFT_INCORPORATING_BILL_20571_ACTION_VALUE_REGRESSION_NO_TRAINING_NO_RUN",
+ "created_at_utc": "2026-11-06T12:25:00+00:00",
+ "supersedes": "timing_v2 38e62441: replaces the y_buy logistic p>0.5 rule (a win-rate learner, not expected value) and the holding-state label that re-charged the entry round trip",
+ "owner_directive": "learn when to buy and when to sell; verify the decisions as post-cost won PnL",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "scope": "KODEX200; one horizon N = 20; one regression model with the position state as an input; daily decisions; post-cost ledger versus R1 (always long, daily deployment) with the cash identity as the zero line; no R3 ledger",
+ "data": {"adjusted_prices": "844b2789… adjusted C for features", "raw_prices": "2da39950… raw O for labels, raw O/C for the ledger (integer won)", "span": "2002-10-14 .. 2026-11-05 (5938 sessions after the cutoff slice; the raw file itself holds 5939 rows)"},
+ "action_values_per_share": {
+  "definitions": "P = O[i+1] (next open), Q = O[i+21] (21st open); buy cost b(P) = P + 5 + fee(P + 5); sell proceeds s(P) = P - 5 - fee(P - 5); fee(x) = (x * 15) // 100000 integer won per share",
+  "cash_state_target": "t0(i) = (s(Q) - b(P)) / P  : buy-and-hold-20-then-sell minus wait-in-cash",
+  "holding_state_target": "t1(i) = (s(Q) - s(P)) / P  : hold-20-then-sell minus sell-now",
+  "decision_rule": "prediction > 0 -> long; < 0 -> flat; == 0 -> keep the current state",
+  "proxy_caveat": "1-share proxy of an N-session comparison with no intermediate trading; not the optimal value of the realized daily re-decision policy nor of quantity-dependent integer fees; the real outcome is judged only by the separate ledger",
+  "determined_at": "open i+21; a decision i may enter training only when i + 21 <= the training cutoff index"
+ },
+ "model": {
+  "form": "one ordinary least squares regression (closed form, numpy lstsq, zero optimizer calls): target = intercept + beta . features",
+  "features": ["log return over 5 sessions", "log return over 20 sessions", "log return over 60 sessions", "C / MA200 - 1 (strict trailing 200 incl. current close)", "20-session realized standard deviation of daily log returns", "position indicator (1 holding, 0 cash)"],
+  "standardization": "the five price features are standardized with the training fold's mean and sd; the position indicator stays raw; the intercept is unpenalized",
+  "training_rows": "for every decision i with a matured label, two rows: (features_i, pos = 0, t0(i)) and (features_i, pos = 1, t1(i)); the two rows share the fold",
+  "note_on_the_dummy": "t0(i) - t1(i) = (s(P) - b(P)) / P, approximately minus the round-trip cost, nearly constant across i, so the additive position dummy absorbs the state difference",
+  "diagnostics_fixed": ["condition number of the design matrix per fit", "in-fold residual variance ratio (1 - R^2) and out-of-fold sign agreement between prediction and realized target", "coefficient table per fold (descriptive)"]
+ },
+ "folds": {
+  "development": "test year y in 2015..2023: fit on all decisions with i + 21 <= first session index of y (expanding window from 2003-08-01); predict every decision in y with that single fit",
+  "post_hoc_2024_04": "frozen-rule walk-forward validation on 2024-04-01 .. 2026-11-05: fit on labels matured before the 2024-04-01 decision, refit on the first sessions of 2025 and 2026 with the same rule; this window was viewed repeatedly in earlier research and is NOT an unobserved seal",
+  "prospective": "after approval, append-only log of each day's features, prediction and action written before the outcome exists; evaluated as labels mature; starts empty; this is the only genuinely new validation",
+  "exclusions": "unmatured labels never enter training; decision inputs never include labels or outcomes; abort invalid_input if a row with i + 21 > cutoff is found in a training set"
+ },
+ "policy_and_ledger": {
+  "mechanics": "allocate-v1 timeline: decide at close i; at open i+1 observe O, compute the target quantity, fill at O +/- 5 with integer floor fees; deposit 10,000 won at each close; one daily row; no forced liquidation",
+  "states": "long: target weight 1 every day (new deposits deployed at the next open, R1-like); flat: all cash idle at zero yield; a prediction of exactly 0 keeps the current state",
+  "transitions": "flat -> long when prediction > 0 (buy all affordable shares at the next open); long -> flat when prediction < 0 (sell all at the next open); each switch pays fee and tick",
+  "holding_period": "emergent from daily decisions; differs from the 20-session proxy by construction",
+  "baseline": "R1 always long with the identical mechanics; cash identity PnL = 0 as the zero line; no R3 ledger"
+ },
+ "evaluation": {
+  "primary": "post-cost ledger per fold year 2015..2023 and pooled, then the 2024-04+ frozen-rule table: PnL (won), PnL % of deposits, max drawdown, exposure, buys, sells, fees, ticks; model versus R1",
+  "secondary": "label statistics per fold (mean, sd, share positive of t0 and t1), sign agreement, residual variance ratio, realized holding-period distribution, share of days long",
+  "exclusions": "no p-values treating days as independent; no horizon/feature/threshold/model selection after results; no attribution of a failure to overfitting without evidence; no live-edge claim"
+ },
+ "resources": {"cpu_threads": 2, "external_timeout_seconds": 600, "fits": "9 development + 3 post-hoc = 12 closed-form fits", "api_calls": 0, "orders": 0, "gpu": 0},
+ "verification_required": ["hand-computed t0/t1 on a few integer prices incl. the fee floor and the identity t0 - t1 = (s(P) - b(P))/P", "purge: a decision maturing after the cutoff is excluded; perturbing prices after the cutoff cannot change the fit or earlier decisions", "OLS closed form checked against an exact Fraction solve on a tiny fixture", "ledger fixtures: flat->long->flat->long with exact integer costs; long-state daily deployment; flat-state idle accumulation; prediction 0 keeps state", "fold boundary checks on a synthetic calendar incl. the two-rows-per-date rule", "real selftest limited to hashes/calendar/counts; no real fit before bill's code review"],
+ "deliverables": ["timing_v3.py (features, labels, folds, OLS, policy, ledger, selftest)", "development + post-hoc artifacts in one approved run", "prospective log scaffold (no orders)", "owner report in won versus R1 with drawdowns and the proxy caveat"],
+ "open_choices_for_bill": ["OLS unpenalized (drafted) vs ridge with a declared lambda", "refits inside 2024-04+ at 2025/2026 first sessions (drafted) vs none", "long-state daily deployment of new deposits (drafted) vs deploy only at state switches"]
+}

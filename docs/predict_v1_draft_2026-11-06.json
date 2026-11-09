@@ -1,0 +1,63 @@
+{
+ "version": "predict-v1-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_RUN_NO_FIT",
+ "created_at_utc": "2026-11-06T07:50:00+00:00",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "purpose": "Expected-return module, simplest rungs first: score next-session expected log return forecasts made at the previous close against an always-zero baseline. Past-only inputs, time-ordered expanding estimation, no learner, no threshold selection. Prediction scoring only; no allocation change, no orders, no profit claim.",
+ "how_this_differs_from_rejected_L": "L used a 60-session label, LightGBM with many intraday features, yearly refits and quantile threshold selection. This draft uses a 1-session target, closed-form expanding moments only, no feature set beyond past adjusted closes/returns, no threshold, no learner.",
+ "source": {
+  "path": "G:\\NoSock\\stock\\penny\\data\\kr_etf\\kodex_daily_adj.json",
+  "sha256": "844b27891727b1faa227ea3259cb47eee258f8bf85ec30a3fc6a41b5a299a609",
+  "symbol": "069500",
+  "field": "adjusted C",
+  "cutoff": "2026-11-05",
+  "returns": "r[j] = log(C[j]/C[j-1]); 5937 returns 2002-10-15..2026-11-05 (same series and split as state-vol-v1)",
+  "calibration_end": "2014-12-31",
+  "evaluation_targets": "predicted_for_session >= 2015-01-01 (2906 targets); calibration period is warm-up only, never scored"
+ },
+ "timing": {
+  "decision_at": "previous_session_close (logical marker): at close of session i, after C[i] is observed, emit mu_hat_i for session i+1 using only C[1..i] / r[1..i]",
+  "predicted_for_session": "i+1 = exact next session in the source day list",
+  "target": "y_i = r[i+1] = log(C[i+1]/C[i]) adjusted close-to-close log return (value_unit log_return, moment_order 1)",
+  "usage_later": "a separate pre-registered combine/allocate v2 would map (mu_hat_i, h_i) to w_i; not part of this run",
+  "no_outcome_feedback": "outcome records and scores never feed any predictor"
+ },
+ "variants": {
+  "P0_zero": {"mu_hat": "0 for every decision session", "estimates": 0},
+  "P1_expanding_mean": {"mu_hat": "mean(r[1..i]) expanding through session i", "estimates": "1 recursive moment per day, closed form, no optimizer"},
+  "P2_ma200_conditional_mean": {"regime": "s_i = 1 if C[i] > MA200_i (strict; MA over closes i-199..i), else 0; MA window 200 is a declared design constant inherited from ladder R2/R3, not tuned", "mu_hat": "expanding mean of r[j+1] over past j <= i-1 with s_j == s_i (next-day return given today's regime)", "estimates": "2 conditional moments per day, closed form", "fallback": "if the regime has no past sample: mu_hat = 0 and count it (expected 0 after warm-up)"},
+  "P3_ar1_expanding_optional": {"mu_hat": "a_i + phi_i * r[i] with (a_i, phi_i) = expanding OLS over pairs (r[j], r[j+1]), j <= i-1", "estimates": "2 closed-form OLS coefficients per day, no optimizer, no regularization choice", "include": "bill decides; market_model found phi ~ 0 in-sample, so this rung is expected to be near P1"}
+ },
+ "rung_order": ["P0_zero", "P1_expanding_mean", "P2_ma200_conditional_mean", "P3_ar1_expanding_optional"],
+ "metrics": {
+  "primary": "mean squared error of mu_hat against y over evaluation; paired difference variant minus P0, whole period and per calendar year",
+  "secondary_descriptive": ["MSE ratio to P0", "mean(mu_hat * y) as directional covariance diagnostic (not PnL, no costs)", "sign hit rate where mu_hat != 0", "mean and sd of mu_hat", "OLS slope and intercept of y on mu_hat (calibration, descriptive)", "n_eval, fallback counts"],
+  "no_inference": "no p-values or CI treating daily errors as independent",
+  "expected_scale": "with daily sd ~1.5% and drift ~0.05%, even a perfect constant drift lowers MSE by ~0.1%; the run establishes the causal scoring pipeline, not a profit claim"
+ },
+ "outputs": {
+  "prediction_records": ["symbol", "decision_session", "decision_at marker", "predicted_for_session", "mu_hat per variant", "regime_s_i", "n_samples_used per variant", "value_unit=log_return", "moment_order=1", "forecast_kind=conditional_mean", "envelope_artifact_id + source/code/spec sha16"],
+  "outcome_records": ["predicted_for_session", "realized_log_return"],
+  "envelope": "contract v3: UTC artifact_id, parent_artifact_hashes [source, this spec] full, code/spec sha256, exchange_session KRX date sessions, availability_status, decision_at/execution_not_before markers, units",
+  "output_dir": "%USERPROFILE%\\Documents\\Codex\\2026-11-05\\x20-teatray-top-irc\\work\\predict_v1_20261106",
+  "overwrite": false,
+  "write": "single xb write of the complete payload"
+ },
+ "verification_required": [
+  "hand fixture (6 returns, MA window 2 for the test) asserting P1/P2/P3 closed forms and regime labels by hand",
+  "future perturbation: changing r[k+1..] leaves mu_hat for decision sessions <= k unchanged for every variant",
+  "regime uses closes through i only; strict inequality; MA undefined before 200 closes -> no prediction (warm-up only)",
+  "calibration/evaluation partition without overlap; no full-period moment anywhere",
+  "hashes checked before and after; selftest from the chat folder copy; single xb write"
+ ],
+ "resources": {"cpu_threads": 1, "external_timeout_seconds": 60, "experiments": 1, "variants": "3 (4 if P3 included)", "optimizer_fits": 0, "closed_form_estimates_per_day": {"P1": 1, "P2": 2, "P3": 2}, "api_calls": 0, "orders": 0, "random_paths": 0},
+ "prohibited_in_this_run": ["choosing MA window, horizon, variant or fallback by looking at results", "any future or full-period information (incl. demeaning with the full-period mean)", "reusing the L LightGBM / 60-session / threshold pipeline", "re-tuning allocation weights, bands or lambda", "live or paper orders", "calling a lower MSE a trading edge"],
+ "interpretation": "All evaluation years already viewed; exploratory. Differences at the 0.1% MSE level are the expected scale. A better conditional-mean score is not established profitability; combining with the state and allocating is a later pre-registered step.",
+ "open_choices_for_bill": [
+  "target: adjusted close-to-close r[i+1] (drafted, same series as state) vs raw open-to-open log(O[i+2]/O[i+1]) aligned with the allocation execution timeline",
+  "include P3 AR(1) now or stop at P2",
+  "P2 fallback when a regime has no past sample: 0 (drafted) vs P1 value",
+  "secondary 20-session cumulative target on non-overlapping blocks now or as a later rung"
+ ]
+}

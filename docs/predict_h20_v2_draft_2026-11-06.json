@@ -1,0 +1,48 @@
+{
+ "version": "predict-h20-v2-draft",
+ "status": "DOBBY_DRAFT_FOR_BILL_REVIEW_NO_FIT_NO_RUN",
+ "created_at_utc": "2026-11-06T09:05:00+00:00",
+ "implementation_owner": "dobby",
+ "review_owner": "bill",
+ "purpose": "One added element over the frozen 20-session baseline: H2 = expanding mean of mature 20-session labels conditioned on the MA200 regime observed at the label's own decision. Same target, grid, maturity pool and stored H0/H1 anchors. Primary comparison H2 - H1 only. Forecast study; no orders, allocation or h combination.",
+ "parents": {
+  "raw_prices": "2da39950164f07a0d76cd8ec000c48cc4d5f90000f6a811f2490796988a9f4eb (raw O for target and calendar)",
+  "adjusted_prices": "844b27891727b1faa227ea3259cb47eee258f8bf85ec30a3fc6a41b5a299a609 (adjusted C for the MA200 regime, identical definition to predict-v1)",
+  "predict_h20_v1_results": "4dccf308500d34e00d00a89719ff4a41d17e1844c2cf99824a11f0353f216448 (frozen H0/H1 predictions, outcomes, counts; never rerun)",
+  "spec": "this file once reviewed"
+ },
+ "parent_order": ["raw_prices", "adjusted_prices", "spec", "predict_h20_v1_results"],
+ "unchanged_from_h20_v1": ["target Y_j = O[j+21]/O[j+1] - 1", "decision close i, entry open i+1, exit open i+21", "maturity j >= 199 and j + 21 <= i", "training policy B: all mature labels regardless of grid", "fixed grid origin 3031, step 20, grid-only forecasts, updates stop at the last grid decision 5931", "calendar facts: 146 grid predictions = 145 scored + 1 pending, first pool 2812, 5712 updates, blocks per entry year as stored", "metrics family, null handling, exclusions (no 1-day comparison, no x20 scaling, no PnL, no p-values, no post-hoc calibration, no offset/horizon selection)", "resources: CPU 1, external timeout 60, optimizer calls 0, API 0, orders 0"],
+ "regime_feature": {
+  "definition": "s_t = 1 if adjusted C[t] > mean(adjusted C[t-199..t]) else 0; equality -> 0; defined for t >= 199 (pool start guarantees every pooled j and every grid decision has a regime)",
+  "available_at": "close t; uses adjusted closes through t only",
+  "role": "fixed design constant inherited from ladder R2/R3 and predict-v1; not tuned"
+ },
+ "new_predictor": {
+  "name": "H2_ma200_conditional_mean",
+  "formula": "at grid decision i: mean of mature labels Y_j (j >= 199, j + 21 <= i) with s_j == s_i",
+  "attribution": "each matured label j is added at close i = j + 21 to the cell of s_j (the regime at its own decision), never to the current regime",
+  "update_order": "at close i add Y_j for j = i - 21 to the global sum/count and to cell s_j; if i is on the grid compute s_i, emit H2; off-grid sessions update statistics only; no updates after the last grid decision",
+  "fallback": "if cell s_i has no mature label: H2 = contemporaneous global mean (must equal stored H1 within 1e-15), count fallback_cell_to_global; if the global pool is empty: 0, count fallback_empty",
+  "invariants": "n_cell0 + n_cell1 == n_global at every grid decision; n_selected == n_cell[s_i]; empty cell mean is null, not 0",
+  "stable_computation": "running sums with finite checks (or Welford means); any non-finite statistic or prediction aborts invalid_input"
+ },
+ "baselines": {"policy": "H0 and H1 loaded verbatim from the pinned predict-h20-v1 artifact per grid decision; outcomes reused from the same artifact; our running global mean compared to stored H1 within 1e-15 and labels to stored outcomes within 1e-15; abort on mismatch"},
+ "comparisons": {
+  "primary": "mean paired squared-error difference H2 - H1 over the 145 scored blocks, overall and by entry year (12-13 blocks per year, descriptive)",
+  "secondary": ["H2 - H0", "MSE H2 and ratio to H0 (null if 0)", "share of blocks with H2 squared error strictly below H1", "uncentered cross moment, centered covariance, sign accuracy (mu != 0, Y != 0) with eligible/zero counts, mu mean / population sd", "cell diagnostics at the first and last grid decision: n_cell0, n_cell1, cell means or null, s_i; final pool = last grid decision 2026-10-28, no later labels", "fallback and update counts; H2 estimate counts scored/pending (warm-up and off-grid 0)"],
+  "interpretation": "descriptive; a difference of either sign is a legitimate outcome; no expected-improvement figure; the regime split is a different sample weighting, not evidence of regime timing"
+ },
+ "verification_required": [
+  "synthetic fixture (pool start 1, horizon 3, MA window 2, fixed grid): regimes by hand incl. exact tie -> 0, label attribution to the regime at its own decision, exact Fraction cell means, fallback to global when the current cell is empty, invariants, grid-only storage, pending at the end",
+  "perturbation of adjusted C: changing C strictly after k leaves grid forecasts <= k unchanged; changing C[k] can change regimes s_t for every t whose MA window contains k (t in [k, k+window-1]) and thus later label attribution; assert forecasts before k unchanged and that the set of changed regimes is within that range; do not assert later invariance",
+  "perturbation of raw O: after k leaves forecasts <= k unchanged; O[k] enters label j = k-21 (numerator) from decision k and label j = k-1 (denominator) from decision k+20, as verified in h20-v1",
+  "constant-price full payload: zero targets, null ratios/sign metrics, pending excluded, allow_nan=False",
+  "anchor fixtures: alignment pass; rejections for wrong hash, duplicate decision, shifted session, pending flag, n_pool mismatch, H1 mismatch > 1e-15, outcome mismatch",
+  "real data: four hashes before and after; calendar facts equal to the stored h20-v1 facts; stored anchor aligned to the grid; no real-data estimation in selftest",
+  "single xb write; separate run log (hashes before/after, timeout, exit, wall, stdout/stderr, result hash/bytes); bill reviews the final code hash before one bounded run"
+ ],
+ "outputs": {"output_dir": "%USERPROFILE%\\Documents\\Codex\\2026-11-05\\x20-teatray-top-irc\\work\\predict_h20_v2_20261106", "overwrite": false, "prediction_records": ["decision_index/session", "block_k", "entry/exit or null", "s_i", "mu_hat_H2", "n_global", "n_cell0", "n_cell1", "n_selected", "global_mean_for_fallback", "cell_means or null", "fallback flags", "train_max_label_available_session", "pending status", "anchor_mu_loaded {H0, H1}", "envelope and anchor references"], "envelope": "contract v3; ordered four parents; anchor artifact id"},
+ "prohibited_in_this_run": ["changing MA window, horizon, grid, pool or training policy", "more than one conditional element", "selecting or reinterpreting after viewing H2 output", "h or allocation combination", "live or paper orders", "any profitability, regime-timing or mid-term-edge claim"],
+ "open_choices_for_bill": ["adjusted close for the regime (drafted, same as predict-v1) vs raw close", "report H2 - H0 as secondary (drafted) or H2 - H1 only", "cell diagnostics at first/last grid decision only (drafted) or at every grid decision in records (drafted: per-record counts and means are stored anyway)"]
+}
