@@ -1,12 +1,12 @@
 const B = "/nosock";
-const KR = { "069500": "KODEX 200", "229200": "코스닥150", "091160": "반도체 (국내)", "091170": "은행", "114800": "인버스", "148070": "국고채 10년", "114260": "국고채 3년", "153130": "단기채권" };
+const KR = { "069500": "KODEX 200", "229200": "코스닥150", "091160": "반도체 (국내)", "091170": "은행", "114800": "인버스", "148070": "국고채 10년", "114260": "국고채 3년", "153130": "단기채권", "0167A0": "AI반도체 TOP2" };
 const US = { SPY: "S&P500", QQQ: "나스닥100", IWM: "러셀2000", DIA: "다우30", XLK: "기술", SMH: "반도체", XLF: "금융", XLE: "에너지", XLV: "헬스케어", XLU: "유틸리티", XLP: "필수소비재", EFA: "선진국", EEM: "신흥국", TLT: "미국채 20년+", IEF: "미국채 7-10년", SHY: "미국채 1-3년", GLD: "금", SLV: "은", USO: "원유", SH: "S&P500 인버스", UUP: "달러" };
 const BOOKS = {
   U29_topk: { name: "상위 K 모멘텀", desc: "20거래일마다 29개 종목을 모멘텀 점수로 줄 세워 위에서 K개를 같은 비중으로 삽니다." },
   U29_dual: { name: "듀얼 모멘텀", desc: "상위 K와 같게 고르되, 12-1개월 수익이 0 이하인 종목은 사지 않고 그 몫을 현금으로 둡니다." },
 };
 const nm = (c) => KR[c] || US[c] || c;
-const won = (x) => (x == null || isNaN(x) ? "-" : Math.round(x).toLocaleString("ko-KR"));
+const won = (x) => (x == null || isNaN(x) ? "-" : (Math.round(x) || 0).toLocaleString("ko-KR"));
 const signed = (x) => (x == null || isNaN(x) ? "-" : (x >= 0 ? "+" : "−") + won(Math.abs(x)));
 const cmp = (x) => NSChart.compact(x);
 const pct = (x) => (x == null || isNaN(x) ? "-" : (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(1) + "%");
@@ -74,6 +74,31 @@ function payoutsOf(rows, b = book) {
 }
 
 let liveChart = null;
+let liveChartMode = null;
+let liveMode = "won";
+try { liveMode = localStorage.getItem("ns-live-mode") === "ret" ? "ret" : "won"; } catch (e) {}
+function twr(marks) {
+  let acc = 1;
+  return marks.map((x, i) => {
+    if (i > 0) {
+      const p = marks[i - 1];
+      const flow = x.contributed != null && p.contributed != null ? x.contributed - p.contributed : 0;
+      const base = p.equity + (p.vault || 0) + flow;
+      if (base > 0) acc *= (x.equity + (x.vault || 0)) / base;
+    }
+    return 100 * (acc - 1);
+  });
+}
+const retFmt = (v) => (v == null || !isFinite(v) ? "-" : Math.abs(v) < 0.005 ? "0.00%" : (v > 0 ? "+" : "−") + Math.abs(v).toFixed(2) + "%");
+const retAxis = (t, step) => {
+  const d = Math.max(0, Math.min(3, Math.ceil(-Math.log10(step) - 1e-9)));
+  return Math.abs(t) < step / 2 ? "0%" : (t > 0 ? "+" : "−") + Math.abs(t).toFixed(d) + "%";
+};
+function setLiveMode(m) {
+  liveMode = m === "ret" ? "ret" : "won";
+  try { localStorage.setItem("ns-live-mode", liveMode); } catch (e) {}
+  renderNow();
+}
 const kstStamp = (ts) => (ts ? ts.slice(0, 16).replace("T", " ") : "");
 const LV = () => (S && S.live) || {};
 function todayKST() { return new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10); }
@@ -85,7 +110,7 @@ function renderNow() {
   const recentErr = (lv.errors || []).filter((e) => Date.now() - Date.parse(e.ts) < 3600e3);
   if (!lv.last_start) rl.innerHTML = `<i></i><span>자동 매매가 아직 시작되지 않았습니다.</span>`;
   else if (lv.last_start.kind === "stop") rl.innerHTML = `<i></i><span><b>멈춤</b> ${kstStamp(lv.last_start.ts)}</span>`;
-  else rl.innerHTML = `<i class="${recentErr.length ? "err" : "on"}"></i><span><b>${lv.live ? "자동 실주문 켜짐" : "드라이런 (주문 안 냄)"}</b>${lm ? `, 마지막 확인 ${kstStamp(lm.ts).slice(5)}` : ""}${recentErr.length ? `, 최근 오류 ${recentErr.length}건` : ""}</span>`;
+  else rl.innerHTML = `<i class="${recentErr.length ? "err" : "on"}"></i><span><b>${lv.live ? "자동 실주문 켜짐" : "드라이런 (주문 안 냄)"}</b>${lm ? `, 마지막 확인 ${kstStamp(lm.ts).slice(5)}` : ""}${freshening ? ", 잔고 확인 중" : ""}${recentErr.length ? `, 최근 오류 ${recentErr.length}건` : ""}</span>`;
   $("mode").textContent = lv.live ? "실계좌" : "드라이런";
   $("mode").classList.toggle("live", !!lv.live);
   $("asof").textContent = lm ? `${kstStamp(lm.ts).slice(5).replace("-", ".")} 기준` : "기록 대기";
@@ -94,11 +119,29 @@ function renderNow() {
   const today = todayKST();
   const firstToday = marks.find((x) => x.ts.slice(0, 10) === today);
   const pay = $("pay");
-  if (lm && firstToday && lm.ts !== firstToday.ts) {
-    const net = (x) => x.equity + (x.vault || 0) - (x.contributed || 0);
-    const d = net(lm) - net(firstToday);
-    pay.innerHTML = `<p class="pay">오늘 손익 <b>${signed(d)}원</b> (${pct((100 * d) / Math.max(1, firstToday.equity))}), 첫 확인 ${firstToday.ts.slice(11, 16)} 대비, 입금 제외</p>`;
-  } else pay.innerHTML = lm ? `<p class="pay">${lm.contributed ? `넣은 돈 ${won(lm.contributed)}원, 손익 <b>${signed(net0(lm))}원</b>` : "오늘 첫 기록입니다."}</p>` : `<p class="pay">자동 매매를 켜면 10분마다 도비 장부를 평가해 여기에 보여 줍니다.</p>`;
+  const cw = (v) => cls(Math.round(v) || 0), cp = (v) => cls(Math.round(v * 100) / 100 || 0);
+  const pv = (w, p) => `<span class="${cw(w)}">${signed(w)}원</span><small class="${cp(p)}">${retFmt(p)}</small>`;
+  $("pnl-all").innerHTML = "-";
+  $("pnl-today").innerHTML = "-";
+  $("pnl-all-from").textContent = "";
+  $("pnl-today-from").textContent = "";
+  $("pnl-split").innerHTML = "";
+  if (lm && marks.length) {
+    const r = twr(marks), last = r[r.length - 1], n0 = net0(lm);
+    $("pnl-all").innerHTML = pv(n0, last);
+    const sp = lv.pnl_split;
+    if (sp && sp.ts === lm.ts) {
+      const h = Math.round(sp.hold), s = Math.round(sp.sold || 0), f = Math.round(n0) - h - s;
+      $("pnl-split").innerHTML = [["보유 종목", h], ...(s ? [["판 종목", s]] : []), ["환율", f]].map(([k, v]) => `<span>${k} <b class="${cls(v)}">${signed(v)}원</b></span>`).join("");
+    }
+    $("pnl-all-from").textContent = `${dot(marks[0].ts.slice(0, 10)).slice(5)}부터`;
+    if (firstToday && lm.ts !== firstToday.ts) {
+      const k = marks.indexOf(firstToday);
+      $("pnl-today").innerHTML = pv(n0 - net0(firstToday), 100 * ((1 + last / 100) / (1 + r[k] / 100) - 1));
+      $("pnl-today-from").textContent = `${firstToday.ts.slice(11, 16)}부터`;
+    }
+    pay.innerHTML = "";
+  } else pay.innerHTML = `<p class="pay">자동 매매를 켜면 도비 장부를 평가해 여기에 보여 줍니다.</p>`;
   $("acct").textContent = won(lm && lm.vault != null ? lm.vault : lv.vault ? lv.vault.vault : 0) + "원";
   $("dep").textContent = lm ? won(lm.krw) + "원" : "-";
   $("profit").textContent = lm && lm.usd != null ? "$" + Number(lm.usd).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-";
@@ -116,31 +159,73 @@ function renderNow() {
     b.className = "btn";
     b.type = "button";
     b.textContent = "환전했어요";
-    b.onclick = async () => { b.disabled = true; try { await api("/api/fx/done", { method: "POST", body: JSON.stringify({ id: f.id }) }); load(); } catch (e) { b.disabled = false; b.textContent = "다시 눌러 주세요"; } };
+    b.onclick = () => fxDone(b, f.id);
     box.appendChild(b);
     fxb.appendChild(box);
   }
+  const fc = S && S.fx_check;
+  if (fc && fc.ts && fc.ts.slice(0, 10) === todayKST()) {
+    const box = document.createElement("div");
+    box.className = "fx";
+    box.innerHTML = `<div class="fx-top"><span>환전 확인</span><span>${esc(fc.ts.slice(11, 16))}</span></div><p>${esc(fc.body || "")}</p>`;
+    const last = ((S && S.fx) || []).filter((f) => f.day === fc.ts.slice(0, 10)).slice(-1)[0];
+    if (last && fc.left >= 0.01) {
+      const b = document.createElement("button");
+      b.className = "btn";
+      b.type = "button";
+      b.textContent = "더 바꿨어요";
+      b.onclick = () => fxDone(b, last.id);
+      box.appendChild(b);
+    }
+    fxb.appendChild(box);
+  }
 
-  const data = { days: marks.map((x) => x.ts.slice(0, 16)), series: [{ key: "equity", name: "도비 자산", color: "--ink", width: 2.25, values: marks.map((x) => x.equity) }, { key: "contributed", name: "넣은 돈", color: "--ink-3", width: 1.25, style: "step", values: marks.map((x) => (x.contributed == null ? x.equity : x.contributed)) }] };
-  if (!liveChart || !$("live-chart")._chart) liveChart = NSChart.create($("live-chart"), Object.assign({ label: "도비 자산 추이" }, data));
-  else liveChart.update(data);
+  const wonData = { days: marks.map((x) => x.ts.slice(0, 16)), series: [{ key: "equity", name: "도비 자산", color: "--ink", width: 2.25, values: marks.map((x) => x.equity) }, { key: "contributed", name: "넣은 돈", color: "--ink-3", width: 1.25, style: "step", values: marks.map((x) => (x.contributed == null ? x.equity : x.contributed)) }] };
+  const mode = liveMode;
+  const data = mode === "ret" ? { days: wonData.days, series: [{ key: "ret", name: "수익률 (입금 제외)", color: "--ink", width: 2.25, values: twr(marks) }] } : wonData;
+  const cfg = mode === "ret" ? { label: "도비 수익률 추이, 입금 제외", fmt: retFmt, yfmt: retAxis } : { label: "도비 자산 추이", fmt: (v) => (v == null || !isFinite(v) ? "-" : won(v) + "원") };
+  for (const b of document.querySelectorAll("#live-mode button")) b.setAttribute("aria-pressed", String(b.dataset.m === mode));
+  if (!liveChart || !$("live-chart")._chart || liveChartMode !== mode) {
+    liveChart = NSChart.create($("live-chart"), Object.assign(cfg, data));
+    liveChartMode = mode;
+  } else liveChart.update(data);
 
   const hb = $("holds");
-  const w = (plan && plan.weights) || {};
+  const tgt = lv.target;
+  const w = Object.assign({}, (tgt && tgt.weights) || (plan && plan.weights) || {});
+  const subOf = {};
+  for (const [o, s] of Object.entries((tgt && tgt.subs) || {})) if (s && w[o]) { w[s] = (w[s] || 0) + w[o]; delete w[o]; subOf[s] = o; }
   const val = (lm && lm.value) || {};
   const eq = lm ? lm.equity : 0;
-  $("plan-asof").textContent = plan ? `${dot(plan.decided_on)} 종가로 계산` : "";
+  $("plan-asof").textContent = tgt ? `${kstStamp(tgt.ts).slice(5).replace("-", ".")} ${tgt.phase === "us" ? "미국장" : "국내장"} 주문 기준` : plan ? `${dot(plan.decided_on)} 종가로 계산` : "";
   const codes = [...new Set([...Object.keys(w), ...Object.keys(val)])].sort((a, b) => (w[b] || 0) - (w[a] || 0) || (val[b] || 0) - (val[a] || 0));
   const top = Math.max(0.0001, ...Object.values(w), ...codes.map((c) => (eq ? (val[c] || 0) / eq : 0)));
   if (!codes.length) hb.innerHTML = `<li class="empty">첫 리밸런싱 계획이 나오면 종목별 목표 비율과 실제 보유가 여기에 나옵니다.</li>`;
-  else hb.innerHTML = `<li class="wlegend" style="border:0;padding:0"><span><i></i>지금 보유</span><span><i class="t"></i>모델 목표</span></li>` + codes.map((c) => {
+  else hb.innerHTML = `<li class="wlegend" style="border:0;padding:0"><span><i></i>지금 보유</span><span><i class="over"></i>목표 초과분</span><span><i class="t"></i>목표</span></li>` + codes.map((c) => {
     const cur = eq ? (val[c] || 0) / eq : 0, tg = w[c] || 0;
-    return `<li><div class="h-row"><span class="h-name">${esc(nm(c))}</span><span class="h-code">${esc(c)}</span><span class="h-val">${won(val[c] || 0)}원</span></div><div class="h-bar"><i><b style="width:${((100 * cur) / top).toFixed(1)}%"></b><u style="width:${((100 * tg) / top).toFixed(1)}%"></u></i><span style="min-width:86px">${(100 * cur).toFixed(1)}% / ${(100 * tg).toFixed(1)}%</span></div></li>`;
+    const p = (v) => ((100 * v) / top).toFixed(2);
+    const over = cur > tg ? `<em style="left:${p(tg)}%;width:${p(cur - tg)}%"></em>` : "";
+    const mark = tg > 0 ? `<u style="left:${p(tg)}%"></u>` : "";
+    return `<li><div class="h-row"><span class="h-name">${esc(nm(c))}</span><span class="h-code">${esc(c)}${subOf[c] ? ` ${esc(nm(subOf[c]))} 대신` : ""}</span><span class="h-val">${won(val[c] || 0)}원</span></div><div class="h-bar"><i><b style="width:${p(Math.min(cur, tg))}%"></b>${over}${mark}</i><span style="min-width:86px">${(100 * cur).toFixed(1)}% / ${(100 * tg).toFixed(1)}%</span></div></li>`;
   }).join("");
 
   const ol = $("lastdec");
   const ords = (lv.orders || []).filter((o) => o.ts.slice(0, 10) === today);
   ol.innerHTML = ords.length ? ords.slice().reverse().map(orderRow).join("") : `<li class="empty" style="display:block">오늘 낸 주문이 없습니다. 국내는 09:00, 미국은 미국장이 열리자마자(지금은 23:30) 주문합니다.</li>`;
+}
+
+async function fxDone(b, id) {
+  b.disabled = true;
+  b.textContent = "잔고 확인 중";
+  try {
+    await api("/api/fx/done", { method: "POST", body: JSON.stringify({ id }) });
+    load();
+    setTimeout(load, 2500);
+    setTimeout(load, 6000);
+  } catch (e) {
+    b.disabled = false;
+    b.textContent = "다시 눌러 주세요";
+  }
 }
 
 function orderRow(o, withDate) {
@@ -155,7 +240,7 @@ function orderRow(o, withDate) {
   else if (o.kind === "scale_us") { st = "달러 부족"; c = "bad"; }
   else if (o.kind === "refuse") { st = "중단"; c = "bad"; }
   else if (o.kind === "fx_missing") { st = "환전 없음"; c = "bad"; }
-  const detail = o.kind === "order" && o.avg_price ? `평균 ${o.avg_price}, 체결 ${o.filled_qty}` : o.reason || (o.code_detail ? `${o.error} ${o.code_detail}` : o.error || "");
+  const detail = o.kind === "order" && o.avg_price ? `평균 ${o.avg_price}, 체결 ${o.filled_qty}` : o.reason || [o.code_detail ? `${o.error} ${o.code_detail}` : o.error, o.message].filter(Boolean).join(" ");
   const tm = withDate ? `${o.ts.slice(5, 10).replace("-", ".")}<br>${o.ts.slice(11, 16)}` : o.ts.slice(11, 16);
   return `<li><span class="tm">${tm}</span><span>${o.code ? esc(nm(o.code)) + " " : ""}${side} ${esc(amt)}</span><span class="st ${c}">${esc(st)}</span>${detail ? `<span class="sub2">${esc(detail)}</span>` : ""}</li>`;
 }
@@ -250,6 +335,41 @@ function renderWhy() {
   }
 }
 
+const SC_WHO = { desk: "시나리오 데스크", "codex-seoha": "서버 Codex 이슈", dot: "도트 이슈" };
+const fp = (f, d = 2) => (f == null || isNaN(f) ? "-" : Number((100 * Math.abs(f)).toFixed(d)) === 0 ? (0).toFixed(d) + "%" : (f > 0 ? "+" : "−") + (100 * Math.abs(f)).toFixed(d) + "%");
+const fr = (f) => (f == null ? "-" : Math.round(100 * f) + "%");
+const cl2 = (f) => cls(f == null ? null : Number((100 * f).toFixed(2)));
+const stamp = (ts) => (ts ? `${dot(ts.slice(0, 10))} ${ts.slice(11, 16)}` : "");
+
+function scoreHTML(sc) {
+  if (!sc) return `<section class="block"><h2>예측 점수판</h2><p class="empty">매일 07:10(미국장 마감 뒤)과 16:10(국내장 마감 뒤)에 처음 계산되면 여기에 나옵니다.</p></section>`;
+  const d = sc.desk || {}, t = d.total || {};
+  const by = (sc.calls && sc.calls.by_author) || {};
+  const order = Object.keys(by).sort((a, b) => (a === "desk" ? -1 : b === "desk" ? 1 : a.localeCompare(b)));
+  const who = order.map((au) => {
+    const a = by[au];
+    const done = a.matured ? `방향 적중 ${fr(a.hit_rate)}, 그 방향으로 샀다면 비용 후 평균 ${fp(a.net_mean, 1)}` : "아직 없음";
+    const open = a.open ? `지금까지 방향 적중 ${fr(a.open_hit_rate)}, 비용 후 평균 ${fp(a.open_net_mean, 1)}` : "아직 없음";
+    const vs = a.base_n ? `. 같은 ${a.base_n}건을 과거 평균으로 예측했다면 평균 오차 ${(100 * a.base_mae).toFixed(1)}%p` : "";
+    const mag = a.mag_n ? `<p class="note">예상 크기와 실제의 평균 차이 ${fp(a.mag_bias, 1)}, 평균 오차 ${(100 * a.mag_mae).toFixed(1)}%p (${a.mag_n}건)${vs}</p>` : "";
+    return `<li><div class="sc-who"><b>${esc(SC_WHO[au] || au)}</b><span>${a.all ?? a.calls}건 중 ${a.calls}건 채점</span></div><dl class="kv sc-kv"><dt>기간 끝남 ${a.matured}건</dt><dd>${done}</dd><dt>진행 중 ${a.open}건</dt><dd>${open}</dd></dl>${mag}</li>`;
+  }).join("");
+  const items = (sc.calls && sc.calls.items) || [];
+  const dk = items.filter((x) => x.author === "desk");
+  const lastAt = dk.reduce((m, x) => (x.at > m ? x.at : m), "");
+  const latest = dk.filter((x) => x.at === lastAt).sort((a, b) => Math.abs(b.magnitude) - Math.abs(a.magnitude));
+  const state = (x) => (!x.entry_day ? "시작 전" : x.matured ? (x.hit ? "맞음" : "틀림") : `${x.days}/${x.horizon}일`);
+  const withBase = latest.filter((x) => x.base != null);
+  const avg = (xs) => xs.reduce((s, v) => s + v, 0) / xs.length;
+  const baseNote = withBase.length ? `<p class="note" style="margin-top:8px">이 예측 평균 ${pct(avg(withBase.map((x) => x.magnitude)))}, 같은 종목들의 과거 10년 20거래일 평균 ${pct(avg(withBase.map((x) => x.base)))}. 데스크 예상은 과거 평균 ± 표준편차의 1/4 안으로 보정됩니다.</p>` : "";
+  const rows = latest.map((x) => `<div><span>${esc(nm(x.code))}</span><span class="${cls(x.magnitude)}">${pct(x.magnitude)}</span><span class="${x.entry_day ? cls(x.ret) : ""}">${x.entry_day ? fp(x.ret, 1) : "-"}</span><span class="${x.matured ? (x.hit ? "up" : "down") : "muted"}">${state(x)}</span></div>`).join("");
+  return `<section class="block"><h2>예측 점수판<small>${stamp(sc.asof)} 계산</small></h2>
+    <dl class="kv"><dt>데스크 비율 조정을 따랐다면 (비용 후)</dt><dd class="${cl2(t.net)}">${fp(t.net)}</dd><dt>조정으로 번 것</dt><dd class="${cl2(t.gross)}">${fp(t.gross)}</dd><dt>거래 비용</dt><dd>${fp(-(t.cost || 0))}</dd><dt>계산한 날</dt><dd>${(d.daily || []).length}일</dd></dl>
+    <ul class="sc-list">${who}</ul>
+    ${latest.length ? `<h2 style="margin-top:22px">데스크 최근 예측과 실제<small>${stamp(lastAt)} 예측, 20거래일 기준</small></h2><div class="sc-table"><div class="sc-head"><span>종목</span><span>예상</span><span>실제</span><span>상태</span></div>${rows}</div>${baseNote}` : ""}
+    <p class="note" style="margin-top:10px">예측이 나온 다음 장 시가에 샀다고 보고 계산하고, 수수료와 호가 차이를 비용으로 뺍니다. 실제는 시가부터 마지막 종가까지의 수익률입니다(국내 ${dot(sc.last_close && sc.last_close.KR)}, 미국 ${dot(sc.last_close && sc.last_close.US)} 종가까지). 이슈 예측 중 방향을 '혼조'나 '불분명'으로 적은 것은 채점하지 않습니다.</p></section>`;
+}
+
 function renderReport() {
   const lv = LV();
   $("report-lead").textContent = "도비 장부의 자동 매매 기록입니다. 계좌의 다른 돈과 종목은 건드리지 않습니다.";
@@ -257,7 +377,7 @@ function renderReport() {
   const ords = (lv.orders || []).slice().reverse();
   const v = lv.vault;
   const plans = (lv.plans || []).slice().reverse();
-  box.innerHTML = `<section class="block"><h2>체결과 주문<small>${ords.length}건</small></h2><ul class="olist">${ords.length ? ords.slice(0, 60).map((o) => orderRow(o, true)).join("") : '<li class="empty" style="display:block">아직 주문이 없습니다.</li>'}</ul></section>
+  box.innerHTML = scoreHTML(S && S.scorecard) + `<section class="block"><h2>체결과 주문<small>${ords.length}건</small></h2><ul class="olist">${ords.length ? ords.slice(0, 60).map((o) => orderRow(o, true)).join("") : '<li class="empty" style="display:block">아직 주문이 없습니다.</li>'}</ul></section>
     <section class="block"><h2>금고</h2>${v ? `<dl class="kv"><dt>금고 누적</dt><dd>${won(v.vault)}원</dd><dt>넣은 돈</dt><dd>${won(v.principal)}원</dd><dt>판 것의 손익 누적</dt><dd class="${cls(v.profit)}">${signed(v.profit)}원</dd>${v.tax_deduction != null ? `<dt>올해 미국 양도차익</dt><dd class="${cls(v.tax_year_gain || 0)}">${signed(v.tax_year_gain || 0)}원</dd><dt>미국 양도세 적립</dt><dd>${won(v.tax_reserve || 0)}원</dd>` : ""}</dl>` : '<p class="empty">아직 판 종목이 없습니다.</p>'}<p class="note" style="margin-top:10px">팔아서 생긴 손익 누적이 이전 최고를 넘으면 넘은 만큼의 절반을 금고로 떼어 둡니다. 금고 돈은 계좌에 그대로 있고 도비는 쓰지 않습니다. 손실은 남긴 이익에서 먼저 빠집니다. 미국 종목은 올해 원화 기준 양도차익이 ${won(v && v.tax_deduction != null ? v.tax_deduction : 2500000)}원을 넘으면 넘은 만큼의 22%를 양도세로 따로 떼어 두고, 남은 이익으로 금고를 계산합니다.</p></section>
     <section class="block"><h2>계획 이력</h2>${plans.length ? `<dl class="kv">${plans.map((p) => `<dt>${dot(p.decided_on)} 종가</dt><dd>${Object.keys(p.weights).length}종목</dd>`).join("")}</dl>` : '<p class="empty">아직 계획이 없습니다.</p>'}</section>
     ${(lv.errors || []).length ? `<section class="block"><h2>최근 오류</h2><dl class="kv">${lv.errors.slice().reverse().map((e) => `<dt>${kstStamp(e.ts)}</dt><dd class="down">${esc(e.error)} ${esc(e.where || "")}</dd>`).join("")}</dl></section>` : ""}`;
@@ -685,9 +805,30 @@ $("loginform").onsubmit = async (ev) => {
   $("lmsg").textContent = "확인 중입니다.";
   const r = await fetch(B + "/login", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: $("lid").value.trim(), password: $("lpw").value }) });
   const d = await r.json().catch(() => ({}));
-  if (r.ok) { $("lpw").value = ""; $("lmsg").textContent = ""; load(); } else $("lmsg").textContent = d.error || "로그인하지 못했습니다.";
+  if (r.ok) { $("lpw").value = ""; $("lmsg").textContent = ""; load().then(freshen); } else $("lmsg").textContent = d.error || "로그인하지 못했습니다.";
 };
 
+let freshening = false, freshAt = 0;
+async function freshen() {
+  if (!S || freshening || Date.now() - freshAt < 10000) return;
+  freshAt = Date.now();
+  const lastTs = () => (S && S.live && S.live.last_mark ? S.live.last_mark.ts : "");
+  const before = lastTs();
+  freshening = true;
+  renderNow();
+  try {
+    await api("/api/live/refresh", { method: "POST", body: "{}" });
+    for (const ms of [1500, 2000, 3000, 4000]) {
+      await new Promise((ok) => setTimeout(ok, ms));
+      await load();
+      if (lastTs() && lastTs() !== before) break;
+    }
+  } catch (e) {}
+  freshening = false;
+  renderNow();
+}
+
 route();
-load();
+load().then(freshen);
 setInterval(load, 60000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load().then(freshen); });

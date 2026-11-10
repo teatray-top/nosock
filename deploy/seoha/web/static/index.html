@@ -63,8 +63,8 @@ mark { background: var(--vault); color: var(--on-vault); font-size: 12px; font-w
 main { max-width: 1120px; margin: 0 auto; padding: 0 16px calc(var(--nav-h) + 32px + env(safe-area-inset-bottom)); }
 h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.035em; margin: 20px 0 6px; }
 .lead { color: var(--ink-2); font-size: 14px; max-width: 60ch; margin-bottom: 20px; }
-h2 { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; display: flex; align-items: baseline; gap: 8px; }
-h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); }
+h2 { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 2px; }
+h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); white-space: nowrap; }
 .block { margin-top: 32px; }
 .note { color: var(--ink-2); font-size: 13px; line-height: 1.55; }
 .empty { color: var(--ink-2); font-size: 14px; padding: 16px 0; }
@@ -80,11 +80,13 @@ h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); }
 .olist .st { font-weight: 800; font-size: 12.5px; }
 .olist .st.ok { color: var(--up); } .olist .st.bad { color: var(--down); } .olist .st.dry { color: var(--ink-3); }
 .olist .sub2 { grid-column: 2 / -1; font-size: 12.5px; color: var(--ink-3); }
-.h-bar i u { display: block; height: 100%; position: relative; top: -4px; border-right: 2px solid var(--ink); }
+.h-bar i em { position: absolute; top: 0; height: 100%; background: var(--ink-3); }
+.h-bar i u { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: var(--ink); box-shadow: 0 0 0 2px var(--bg); }
 .wlegend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-3); margin: -2px 0 6px; }
 .wlegend span { display: inline-flex; gap: 5px; align-items: center; }
 .wlegend i { display: inline-block; width: 12px; height: 4px; background: var(--ink); }
-.wlegend i.t { width: 0; height: 10px; border-right: 2px solid var(--ink); background: none; }
+.wlegend i.over { background: var(--ink-3); }
+.wlegend i.t { width: 2px; height: 12px; }
 .beta { display: grid; gap: 6px; margin: 4px 0 6px; }
 .beta div { display: grid; grid-template-columns: 1fr 70px 52px; gap: 8px; align-items: center; font-size: 14px; }
 .beta div span:nth-child(2) { height: 6px; background: var(--surface-2); position: relative; }
@@ -103,6 +105,7 @@ h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); }
 .hero-num small { font-size: 0.42em; font-weight: 800; letter-spacing: -0.02em; margin-left: 3px; }
 .pay { margin-top: 8px; font-size: 13.5px; font-weight: 700; color: var(--band-sub); }
 .pay b { color: var(--band-ink); }
+.pay b.neg { color: inherit; }
 .pay.fresh { animation: rise .5s ease-out both; }
 @keyframes rise { from { transform: translateY(6px); opacity: 0; } }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0 16px; border-bottom: 1px solid var(--line); }
@@ -111,6 +114,13 @@ h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); }
 .stats dt { font-size: 12px; color: var(--ink-3); font-weight: 700; }
 .stats dd { font-size: 15px; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 .stats dd small { display: block; font-size: 12px; font-weight: 700; }
+.stats.pnl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stats.pnl dt span { font-weight: 600; }
+.stats.pnl dd { font-size: 19px; }
+.stats.pnl dd small { font-size: 13px; margin-top: 1px; }
+.stats.pnl dd.split { display: grid; gap: 1px; margin-top: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--ink-3); }
+.stats.pnl dd.split:empty { display: none; }
+.stats.pnl dd.split b { font-weight: 700; }
 
 .viz { margin: 22px 0 0; }
 .viz-read { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; min-height: 22px; margin-bottom: 6px; }
@@ -132,6 +142,7 @@ h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); }
 .viz-ranges button, .seg button { border: 0; background: transparent; font-size: 13px; font-weight: 700; color: var(--ink-2); padding: 6px 11px; }
 .viz-ranges button + button, .seg button + button { border-left: 1px solid var(--line-2); }
 .viz-ranges button[aria-pressed="true"], .seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
+.live-mode { margin: 18px 0 6px; }
 .viz-hint { font-size: 12px; color: var(--ink-3); margin-left: auto; }
 .viz-empty .viz-nav, .viz-empty .viz-ctl, .viz-empty .viz-read { display: none; }
 .viz-empty .viz-plot { height: 110px; display: grid; place-items: center; background: var(--surface); }
@@ -157,7 +168,7 @@ h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); }
 .h-code { font-size: 12px; color: var(--ink-3); font-weight: 600; }
 .h-val { margin-left: auto; font-weight: 800; }
 .h-bar { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
-.h-bar i { flex: 1; height: 4px; background: var(--surface-2); display: block; }
+.h-bar i { flex: 1; height: 4px; background: var(--surface-2); display: block; position: relative; }
 .h-bar i b { display: block; height: 100%; background: var(--ink); }
 .h-bar.cash i b { background: var(--ink-3); }
 .h-bar span { font-size: 12px; font-weight: 800; color: var(--ink-2); min-width: 34px; text-align: right; }
@@ -179,6 +190,20 @@ h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); }
 .kv dt { color: var(--ink-2); font-size: 14px; }
 .kv dd { font-weight: 800; text-align: right; }
 .kv dt:last-of-type, .kv dd:last-of-type { border-bottom: 0; }
+.sc-list { list-style: none; margin: 14px 0 0; padding: 0; }
+.sc-list li { padding: 12px 0; border-top: 1px solid var(--line); }
+.sc-who { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.sc-who b { font-size: 15px; }
+.sc-who span { font-size: 12.5px; color: var(--ink-3); }
+.sc-kv { grid-template-columns: auto 1fr; column-gap: 14px; margin-top: 4px; }
+.sc-kv dt, .sc-kv dd { padding: 5px 0; font-size: 13px; border-bottom: 0; }
+.sc-kv dd { font-weight: 600; }
+.sc-table { display: grid; font-size: 13.5px; margin-top: 4px; }
+.sc-table > div { display: grid; grid-template-columns: minmax(0, 1fr) 62px 62px 58px; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.sc-table > div span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-table > div span:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+.sc-table > div.sc-head { color: var(--ink-3); font-size: 12px; }
+.sc-table > div.sc-head span { font-weight: 600; }
 .rgrid { display: grid; gap: 0 36px; }
 
 .set { padding: 16px 0; border-bottom: 1px solid var(--line); }
@@ -389,17 +414,22 @@ h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); }
               <div class="hero-num" id="vault">-</div>
               <div id="pay"></div>
             </div>
+            <dl class="stats pnl">
+              <div><dt>전체 손익 <span id="pnl-all-from"></span></dt><dd id="pnl-all">-</dd><dd class="split" id="pnl-split"></dd></div>
+              <div><dt>오늘 <span id="pnl-today-from"></span></dt><dd id="pnl-today">-</dd></div>
+            </dl>
             <dl class="stats">
               <div><dt>금고</dt><dd id="acct">-</dd></div>
               <div><dt>도비 원화</dt><dd id="dep">-</dd></div>
               <div><dt>도비 달러</dt><dd id="profit">-</dd></div>
             </dl>
           </div>
+          <div class="seg live-mode" id="live-mode" role="group" aria-label="차트 보기"><button type="button" data-m="won" aria-pressed="true" onclick="setLiveMode('won')">금액</button><button type="button" data-m="ret" aria-pressed="false" onclick="setLiveMode('ret')">수익률</button></div>
           <div id="live-chart"></div>
         </div>
         <div class="now-side">
           <div id="fxbox"></div>
-          <section class="block"><h2>모델 비율과 실제 보유<small id="plan-asof"></small></h2><ul class="holds" id="holds"></ul></section>
+          <section class="block"><h2>목표 비율과 실제 보유<small id="plan-asof"></small></h2><ul class="holds" id="holds"></ul></section>
           <section class="block"><h2>오늘 주문</h2><ul class="olist" id="lastdec"></ul></section>
         </div>
       </div>
@@ -455,7 +485,7 @@ h2 small { font-size: 13px; font-weight: 500; color: var(--ink-3); }
   </div>
 </div>
 <script src="/nosock/vendor/konva.min.js"></script>
-<script src="/nosock/chart.js?v=3"></script>
-<script src="/nosock/app.js?v=15"></script>
+<script src="/nosock/chart.js?v=5"></script>
+<script src="/nosock/app.js?v=29"></script>
 </body>
 </html>

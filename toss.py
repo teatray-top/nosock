@@ -105,9 +105,12 @@ class Toss:
         except urllib.error.HTTPError as e:
             raw = e.read().decode("utf-8", "ignore")
             try:
-                err = json.loads(raw).get("error", {})
+                j = json.loads(raw)
             except ValueError:
-                err = {"code": "http", "message": raw[:300]}
+                j = None
+            err = j.get("error") if isinstance(j, dict) and isinstance(j.get("error"), dict) else j if isinstance(j, dict) else {}
+            if not err.get("code"):
+                err = dict(err, code="http", message=err.get("message") or raw[:300])
             code = err.get("code", "http")
             if e.code == 401 and code in ("expired-token", "invalid-token", "token-revoked") and retry > 0:
                 old = self.tok

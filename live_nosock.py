@@ -19,13 +19,19 @@ RUNS = os.environ.get("NOSOCK_RUNS", os.path.join(HERE, "runs"))
 LOG = os.environ.get("NOSOCK_LOG", os.path.join(RUNS, "live_nosock.jsonl"))
 STATE = os.environ.get("NOSOCK_STATE", os.path.join(RUNS, "live_nosock_state.json"))
 STOP = os.path.join(RUNS, "live_nosock.stop")
+MARK_FLAG = os.path.join(RUNS, "mark_now.flag")
+FX_FLAG = os.path.join(RUNS, "fx_check.flag")
 MAX_EQUITY = float(os.environ.get("LIVE_MAX_EQUITY", 5_000_000))
 DAILY_DEPOSIT = float(os.environ.get("NOSOCK_DAILY_DEPOSIT", 10_000))
 SEED = float(os.environ.get("NOSOCK_SEED", 0))
 BUFFER = 0.01
 KR_FEE = 0.003
+BAND = 0.02
 MIN_US_USD = 1.0
 CYCLE = 20
+KR_SUBS = {"091160": "0167A0"}
+BLOCK_DAYS = 7
+GENERAL_422 = {"insufficient-buying-power", "order-hours-closed", "amount-order-outside-regular-hours", "fractional-quantity-outside-regular-hours", "account-restricted", "order-limit-exceeded", "max-order-amount-exceeded", "idempotency-key-conflict", "insufficient-sellable-quantity"}
 KR_PREP, KR_OPEN, KR_LAST = (8, 40), (9, 6), (15, 15)
 US_OPEN_NY, US_LAST_NY = (9, 30), (15, 50)
 US_TAX, US_DEDUCTION = 0.22, 2_500_000.0
@@ -191,7 +197,7 @@ class Account:
     def __init__(self, t, st, codes, markets):
         self.t = t
         self.st = st
-        self.codes = set(codes)
+        self.codes = set(codes) | set(KR_SUBS.values())
         self.markets = markets
 
     def snapshot(self):
@@ -233,31 +239,32 @@ def make_plan(weights, snap, markets, rebalance, us_only=False):
     h = dict(snap["value"])
     krw, usd = snap["krw"], snap["usd"]
     kr, us = [], []
-    if rebalance:
-        for c in sorted(h):
-            px = snap["px"].get(c)
-            if not px:
-                continue
-            m = mk(markets, c)
-            if us_only and m != "US":
-                continue
-            ex = h[c] - tgt.get(c, 0.0)
-            q0 = snap["held"].get(c, 0.0)
-            if m == "KR":
-                n = int(q0) if c not in weights else min(int(q0), int(math.floor(ex / px + 0.5)))
-                if n > 0:
-                    kr.append(dict(code=c, side="SELL", qty=n, px=px, cur_qty=q0))
-                    h[c] -= n * px
-                    krw += n * px * (1 - KR_FEE)
-            else:
-                full = c not in weights
-                ex_usd = ex / fx
-                if full or ex_usd >= MIN_US_USD:
-                    q = q0 if full else min(q0, math.floor(ex_usd / px * 1e6) / 1e6)
-                    if q > 0:
-                        us.append(dict(code=c, side="SELL", qty=q, usd=round(q * px, 2), px=px, cur_qty=q0, full_exit=full))
-                        h[c] -= q * px * fx
-                        usd += q * px
+    for c in sorted(h):
+        px = snap["px"].get(c)
+        if not px:
+            continue
+        m = mk(markets, c)
+        if us_only and m != "US":
+            continue
+        ex = h[c] - tgt.get(c, 0.0)
+        if not rebalance and ex < BAND * B:
+            continue
+        q0 = snap["held"].get(c, 0.0)
+        if m == "KR":
+            n = int(q0) if c not in weights else min(int(q0), int(math.floor(ex / px + 0.5)))
+            if n > 0:
+                kr.append(dict(code=c, side="SELL", qty=n, px=px, cur_qty=q0))
+                h[c] -= n * px
+                krw += n * px * (1 - KR_FEE)
+        else:
+            full = c not in weights
+            ex_usd = ex / fx
+            if full or ex_usd >= MIN_US_USD:
+                q = q0 if full else min(q0, math.floor(ex_usd / px * 1e6) / 1e6)
+                if q > 0:
+                    us.append(dict(code=c, side="SELL", qty=q, usd=round(q * px, 2), px=px, cur_qty=q0, full_exit=full))
+                    h[c] -= q * px * fx
+                    usd += q * px
     cash_tgt = B - sum(tgt.values())
     spend = max(0.0, krw + usd * fx - cash_tgt)
     if us_only:
@@ -310,6 +317,37 @@ def make_plan(weights, snap, markets, rebalance, us_only=False):
     kr_buy = sum(x["qty"] * x["px"] for x in kr if x["side"] == "BUY")
     kr_sell = sum(x["qty"] * x["px"] for x in kr if x["side"] == "SELL")
     return dict(investable=inv, equity=B, targets_krw=tgt, kr=kr, us=us, need_usd=round(need_usd * 1.01, 2) if need_usd > 0.5 else 0.0, kr_buy=kr_buy, kr_sell=kr_sell, us_buy=us_buy, us_sell=us_sell, rebalance=rebalance, idle_krw=max(0.0, spend))
+
+
+def kr_subs(weights, snap):
+    inv = max(0.0, snap["equity"] * (1 - BUFFER))
+    out, used = dict(weights), {}
+    for o, s in KR_SUBS.items():
+        w, po, ps = out.get(o, 0.0), snap["px"].get(o), snap["px"].get(s)
+        if w <= 0 or not po or not ps or snap["held"].get(o, 0.0) > 0 or w * inv >= 0.5 * po:
+            continue
+        out[s] = out.get(s, 0.0) + out.pop(o)
+        used[o] = dict(sub=s, weight=round(w, 4), target_krw=round(w * inv), px=po, sub_px=ps)
+    return out, used
+
+
+def drop_blocked(st, weights, day):
+    out, gone = dict(weights), {}
+    for c, b in (st.get("blocked") or {}).items():
+        if c in out and b.get("until", "") > day and st["book"]["qty"].get(c, 0.0) <= 0:
+            out.pop(c)
+            gone[c] = b
+    return out, gone
+
+
+def block_rejects(st, results, day):
+    if not any(r.get("kind") == "order" and r.get("filled_qty") for r in results):
+        return
+    until = (datetime.strptime(day, "%Y-%m-%d") + timedelta(days=BLOCK_DAYS)).strftime("%Y-%m-%d")
+    for r in results:
+        if r.get("kind") == "order_error" and r.get("status") == 422 and r.get("side") == "BUY" and r.get("code_detail") not in GENERAL_422:
+            st.setdefault("blocked", {})[r["code"]] = dict(day=day, until=until, error=r.get("code_detail"), message=r.get("message"))
+            log("blocked", code=r["code"], day=day, until=until, error=r.get("code_detail"), message=r.get("message"), note=f"다른 주문은 체결됐는데 토스가 이 종목 매수만 거절해 {until}까지 사지 않고 그 몫은 현금으로 둠")
 
 
 def realize(st, p_cur, cur, fx, code):
@@ -435,7 +473,7 @@ def place(t, st, cycle, x, market, fx, **kw):
     try:
         r = t.place(x["code"], x["side"], "MARKET", client_order_id=cid, **kw)
     except Exception as e:
-        return log("order_error", cycle=cycle, code=x["code"], side=x["side"], client_order_id=cid, error=type(e).__name__, code_detail=getattr(e, "code", None), status=getattr(e, "status", None), request=kw)
+        return log("order_error", cycle=cycle, code=x["code"], side=x["side"], client_order_id=cid, error=type(e).__name__, code_detail=getattr(e, "code", None), status=getattr(e, "status", None), message=getattr(e, "message", None), request_id=getattr(e, "request_id", None), request=kw)
     oid = r["orderId"]
     try:
         o = wait_order(t, oid)
@@ -537,7 +575,7 @@ def effective_weights(base, markets):
 
 
 def target_weights(st, markets, phase, rebalance):
-    base = st["cycles"][st["current"]]["weights"]
+    base = dict(st["cycles"][st["current"]]["weights"])
     weights, info = effective_weights(base, markets)
     prev = st.get("last_target")
     diff = sum(abs(weights.get(c, 0.0) - prev.get(c, 0.0)) for c in set(weights) | set(prev)) if prev else 0.0
@@ -553,15 +591,20 @@ def run_kr(t, st, acct, day, rebalance):
     cyc = st["current"]
     weights, rebalance = target_weights(st, acct.markets, "kr", rebalance)
     snap = acct.snapshot()
+    weights, subs = kr_subs(weights, snap)
+    weights, _ = drop_blocked(st, weights, day)
+    if KR_SUBS:
+        log("kr_substitute", day=day, subs=subs, note="모델 비율은 그대로 두고, 1주 값이 목표 금액의 두 배를 넘는 국내 종목은 같은 업종의 싼 ETF로 대신 담음" if subs else "대신 담는 종목 없음, 원래 종목으로 주문")
     plan = make_plan(weights, snap, acct.markets, rebalance)
     log("day_plan", cycle=cyc, day=day, phase="kr", rebalance=rebalance, equity=snap["equity"], kr=plan["kr"], us=plan["us"], need_usd=plan["need_usd"], idle_krw=plan["idle_krw"])
     busy = open_order_symbols(t)
     kr = [x for x in plan["kr"] if x["code"] not in busy]
+    res = []
     for x in [x for x in kr if x["side"] == "SELL"]:
         sq = float(t.get("/api/v1/sellable-quantity", account=True, symbol=x["code"])["sellableQuantity"]) if live_on() else x["qty"]
         q = int(min(x["qty"], sq, st["book"]["qty"].get(x["code"], 0.0)))
         if q > 0:
-            place(t, st, cyc, x, "KR", snap["fx"], quantity=q)
+            res.append(place(t, st, cyc, x, "KR", snap["fx"], quantity=q))
     acct_krw = float(t.buying_power("KRW")["cashBuyingPower"])
     avail = min(st["book"]["krw"], acct_krw)
     for x in [x for x in kr if x["side"] == "BUY"]:
@@ -570,8 +613,9 @@ def run_kr(t, st, acct, day, rebalance):
         if q <= 0:
             log("skip", cycle=cyc, code=x["code"], reason="원화 부족", need=x["qty"] * x["px"], krw=avail)
             continue
-        place(t, st, cyc, x, "KR", snap["fx"], quantity=q)
+        res.append(place(t, st, cyc, x, "KR", snap["fx"], quantity=q))
         avail -= q * x["px"] * (1 + KR_FEE)
+    block_rejects(st, res, day)
     snap2 = acct.snapshot()
     plan2 = make_plan(weights, snap2, acct.markets, rebalance)
     st["fx_pending"] = None
@@ -591,7 +635,7 @@ def run_kr(t, st, acct, day, rebalance):
     return plan2
 
 
-def credit_fx(st, snap):
+def credit_fx(st, snap, final=True):
     p = st.get("fx_pending")
     b = st["book"]
     if not p:
@@ -602,16 +646,62 @@ def credit_fx(st, snap):
     if got > 0:
         b["usd"] += got
         b["krw"] -= got * p["rate"]
-        log("fx_credit", usd=got, won=got * p["rate"], rate=p["rate"], requested=p["usd"], note="계좌에 생긴 달러를 도비 장부로 옮김")
-    else:
+        p["got"] = round(p.get("got", 0.0) + got, 2)
+        p["usd"] = round(p["usd"] - got, 2)
+        log("fx_credit", usd=got, won=got * p["rate"], rate=p["rate"], requested=round(p["usd"] + got, 2), left=p["usd"], note="계좌에 생긴 달러를 도비 장부로 옮김")
+    elif final and not p.get("got"):
         log("fx_missing", requested=p["usd"], account_usd=snap["acct_usd"], note="환전된 달러가 없어 미국 매수를 건너뜀")
-    st["fx_pending"] = None
+    if final or p["usd"] < 0.01:
+        st["fx_pending"] = None
     return got
+
+
+def check_fx(st, acct):
+    snap = acct.snapshot()
+    p = st.get("fx_pending")
+    if not p:
+        log("fx_check", got=0.0, left=0.0, won_left=0, acct_usd=snap["acct_usd"], body="지금 기다리는 환전 요청이 없습니다. 계좌에 있는 달러는 다음 국내장 때 도비가 계산에 넣습니다.")
+    else:
+        rate = p["rate"]
+        got = credit_fx(st, snap, final=False)
+        left = (st.get("fx_pending") or {}).get("usd", 0.0)
+        won_left = int(math.ceil(left * rate / 100.0) * 100) if left >= 0.01 else 0
+        if got > 0 and not won_left:
+            body = f"계좌에서 ${got:,.2f}를 확인해 도비 장부로 옮겼습니다. 오늘 밤 미국 매수에 쓸 달러가 다 찼습니다."
+        elif got > 0:
+            body = f"계좌에서 ${got:,.2f}를 확인해 도비 장부로 옮겼습니다. ${left:,.2f}(원화 {won_left:,}원)를 더 바꾸면 계획대로 다 사고, 안 바꾸면 큰 주문부터 조금씩 줄여서 삽니다."
+        else:
+            body = f"계좌에 새로 바꾼 달러가 아직 안 보입니다. 오늘 밤 미국 매수에 ${left:,.2f}(원화 {won_left:,}원)가 필요합니다."
+        log("fx_check", got=got, left=round(left, 2), won_left=won_left, acct_usd=snap["acct_usd"], body=body)
+        save_state(st)
+    mark(st, acct, "view")
+
+
+def cents(v):
+    return math.floor(v * 100 + 1e-6) / 100
+
+
+def fit_us_buys(buys, avail):
+    keep = sorted(buys, key=lambda x: -x.get("target_usd", x["usd"]))
+    while keep:
+        amts = [cents(x["usd"]) for x in keep]
+        short = sum(amts) - avail
+        if short <= 1e-9:
+            return list(zip(keep, amts))
+        room = [max(0.0, a - MIN_US_USD) for a in amts]
+        if sum(room) >= short:
+            k = short / sum(room)
+            return [(x, cents(a - r * k)) for x, a, r in zip(keep, amts, room)]
+        keep.pop()
+    return []
 
 
 def run_us(t, st, acct, day, rebalance):
     cyc = st["current"]
     weights, rebalance = target_weights(st, acct.markets, "us", rebalance)
+    weights, gone = drop_blocked(st, weights, day)
+    for c, b in gone.items():
+        log("skip", cycle=cyc, code=c, reason=f"토스가 {b.get('day')} 매수를 거절해 {b.get('until')}까지 건너뜀: {b.get('message') or b.get('error')}")
     snap = acct.snapshot()
     credit_fx(st, snap)
     snap = acct.snapshot()
@@ -619,25 +709,27 @@ def run_us(t, st, acct, day, rebalance):
     log("day_plan", cycle=cyc, day=day, phase="us", rebalance=rebalance, equity=snap["equity"], us=plan["us"])
     busy = open_order_symbols(t)
     us = [x for x in plan["us"] if x["code"] not in busy]
+    res = []
     for x in [x for x in us if x["side"] == "SELL"]:
         sq = float(t.get("/api/v1/sellable-quantity", account=True, symbol=x["code"])["sellableQuantity"]) if live_on() else x["cur_qty"]
         q = min(sq, x["qty"], st["book"]["qty"].get(x["code"], 0.0))
         q = math.floor(q * 1e6) / 1e6
         if q > 0:
-            place(t, st, cyc, x, "US", snap["fx"], quantity=f"{q:.6f}".rstrip("0").rstrip("."))
+            res.append(place(t, st, cyc, x, "US", snap["fx"], quantity=f"{q:.6f}".rstrip("0").rstrip(".")))
     acct_usd = float(t.buying_power("USD")["cashBuyingPower"]) if live_on() else snap["acct_usd"]
     avail = max(0.0, min(st["book"]["usd"], acct_usd - st["book"]["vault_usd"] - st["book"].get("tax_usd", 0.0)) * 0.995)
     buys = [x for x in us if x["side"] == "BUY"]
     want = sum(x["usd"] for x in buys)
-    scale = min(1.0, avail / want) if want > 0 else 0.0
-    if buys and scale < 1.0:
-        log("scale_us", cycle=cyc, usd=avail, want=want, scale=scale, reason="달러 부족: 있는 만큼만 비율대로 삽니다")
+    fit = fit_us_buys(buys, avail)
+    got = {x["code"] for x, _ in fit}
+    if buys and sum(a for _, a in fit) < want - 0.005:
+        log("scale_us", cycle=cyc, usd=avail, want=want, bought=round(sum(a for _, a in fit), 2), dropped=[x["code"] for x in buys if x["code"] not in got], reason="달러 부족: 1달러 넘는 주문부터 줄이고, 그래도 모자라면 비중이 가장 작은 종목부터 뺍니다")
     for x in buys:
-        amt = math.floor(x["usd"] * scale * 100) / 100
-        if amt < MIN_US_USD:
-            log("skip", cycle=cyc, code=x["code"], reason="1달러 미만", usd=amt)
-            continue
-        place(t, st, cyc, x, "US", snap["fx"], amount=f"{amt:.2f}")
+        if x["code"] not in got:
+            log("skip", cycle=cyc, code=x["code"], reason="달러 부족으로 이번엔 못 삼", usd=x["usd"])
+    for x, amt in fit:
+        res.append(place(t, st, cyc, x, "US", snap["fx"], amount=f"{amt:.2f}"))
+    block_rejects(st, res, day)
     save_state(st)
     mark(st, acct, "us")
 
@@ -791,7 +883,49 @@ def step(t, st, n, marks_state):
         mark(st, acct, "tick")
         save_state(st)
         marks_state["last"] = time.time()
+    if "book" in st and st.get("markets") and os.path.exists(FX_FLAG):
+        try:
+            os.remove(FX_FLAG)
+        except OSError:
+            pass
+        check_fx(st, Account(t, st, list(st["markets"]), st["markets"]))
+        save_state(st)
+        marks_state["last"] = time.time()
+    if "book" in st and st.get("markets") and os.path.exists(MARK_FLAG):
+        try:
+            os.remove(MARK_FLAG)
+        except OSError:
+            pass
+        acct = Account(t, st, list(st["markets"]), st["markets"])
+        mark(st, acct, "view")
+        save_state(st)
+        marks_state["last"] = time.time()
     return None
+
+
+def nap(sec):
+    end = time.time() + sec
+    while time.time() < end and not os.path.exists(MARK_FLAG) and not os.path.exists(FX_FLAG):
+        time.sleep(1)
+
+
+TOKEN_MIN_LEFT = 3 * 3600
+
+
+def keep_token(t, ms, clock=time.time):
+    if clock() - ms.get("tok_try", 0.0) < 600:
+        return False
+    t._load_token()
+    if t.tok and t.exp > clock() + TOKEN_MIN_LEFT:
+        return False
+    ms["tok_try"] = clock()
+    try:
+        t._issue()
+        log("token_renew", left_h=round((t.exp - clock()) / 3600, 1))
+        return True
+    except Exception as e:
+        log("token_renew_error", error=type(e).__name__, detail=str(e)[:200])
+        return False
 
 
 def loop():
@@ -805,6 +939,7 @@ def loop():
         if os.path.exists(STOP):
             log("stop", reason="stop file")
             return
+        keep_token(t, ms)
         try:
             if step(t, st, now(), ms) == "exit":
                 log("stop", reason="refused")
@@ -812,7 +947,7 @@ def loop():
         except Exception as e:
             log("error", error=type(e).__name__, where=traceback.extract_tb(e.__traceback__)[-1].name, detail=str(getattr(e, "code", "")))
             time.sleep(60)
-        time.sleep(5 if near_open(now()) else 30)
+        nap(5 if near_open(now()) else 30)
 
 
 def plan_only():

@@ -35,6 +35,7 @@ class FakeToss:
         self.placed = []
         self.n = 0
         self.last = {}
+        self.reject = {}
 
     def holdings(self):
         return dict(items=[dict(symbol=s, quantity=str(q), averagePurchasePrice="36.42" if s == "FIVN" else "1") for s, q in self.h.items() if q > 0])
@@ -55,9 +56,11 @@ class FakeToss:
         return dict(sellableQuantity=str(self.h.get(symbol, 0)))
 
     def place(self, symbol, side, order_type, client_order_id=None, quantity=None, amount=None):
+        if symbol in self.reject:
+            raise self.reject[symbol]
         self.n += 1
         p = self.px[symbol]
-        kr = symbol.isdigit()
+        kr = symbol[:1].isdigit()
         if amount is not None:
             q = float(amount) / p
             gross = float(amount)
@@ -111,7 +114,12 @@ spent = sum(x["qty"] * x["px"] * 1.003 for x in plan["kr"] if x["side"] == "BUY"
 check("plan never spends more than bot cash", spent <= 10_000 + 1e-6, spent)
 check("US buys at least $1 each", all(x["usd"] >= 1.0 for x in plan["us"] if x["side"] == "BUY"), plan["us"])
 plan_nr = L.make_plan(w, snap, markets, rebalance=False)
-check("non-rebalance day never sells", all(x["side"] == "BUY" for x in plan_nr["kr"] + plan_nr["us"]), plan_nr)
+check("non-rebalance day: big overweight (FIVN 52% vs 2%) sold the same day", any(x["code"] == "FIVN" and x["side"] == "SELL" for x in plan_nr["us"]), plan_nr["us"])
+snap_d = dict(snap, held={"SMH": 0.023102}, px=dict(px), value={"SMH": 0.023102 * 300 * 1400}, usd=0.0, krw=297.0, equity=10_000.0)
+pd_nr = L.make_plan({"SMH": 0.97}, snap_d, markets, rebalance=False)
+pd_r = L.make_plan({"SMH": 0.97}, snap_d, markets, rebalance=True)
+check("non-rebalance day: small drift (1%p over target) kept", not any(x["side"] == "SELL" for x in pd_nr["us"]), pd_nr["us"])
+check("rebalance day: same small drift trimmed if at least $1", any(x["side"] == "SELL" for x in pd_r["us"]) == (0.023102 * 300 * 1400 - 0.97 * 9900 >= 1400), pd_r["us"])
 w2 = {"SMH": 0.5, "SPY": 0.48}
 plan_x = L.make_plan(w2, snap, markets, rebalance=True)
 check("weight 0 -> full exit", any(x["code"] == "FIVN" and x["full_exit"] for x in plan_x["us"]), plan_x["us"])
@@ -412,9 +420,239 @@ w_case1 = dict(w_case)
 ph = L.make_plan(w_case1, hsnap(1.0, 24_160.0), mk_h, True)
 check("held 1 share vs target 0.1 share -> sold on rebalance", kr_side(ph, "SELL") == 1, ph["kr"])
 ph = L.make_plan(w_case1, hsnap(1.0, 24_160.0), mk_h, False)
-check("held 1 share -> kept on non-rebalance day", kr_side(ph, "SELL") == 0, ph["kr"])
+check("held 1 share (59% of book) vs target 0.1 share -> sold even on a non-rebalance day", kr_side(ph, "SELL") == 1, ph["kr"])
 ph = L.make_plan({"114800": 0.22, "SPY": 0.5}, hsnap(1.0, 24_160.0), mk_h, True)
 check("held 1 share vs target 0.59 share -> kept", kr_side(ph, "SELL") == 0, ph["kr"])
 check("KR trades start after LP quote-free first 5 minutes", L.KR_OPEN >= (9, 5), L.KR_OPEN)
+nov9 = [("USO", 2.28, 2.2845), ("SMH", 1.14, 1.1473), ("XLV", 1.05, 1.0546), ("XLE", 1.0, 1.0025), ("XLK", 1.0, 0.8453), ("XLP", 1.0, 0.7356), ("XLF", 1.0, 0.7145), ("EEM", 1.0, 0.6936), ("EFA", 1.0, 0.6817), ("GLD", 1.0, 0.6667)]
+nb = [dict(code=c, side="BUY", usd=u, target_usd=tu) for c, u, tu in nov9]
+fit = L.fit_us_buys(nb, 11.4624)
+check("11-09 case: $0.008 short -> all 10 still bought", len(fit) == 10, fit)
+check("11-09 case: every order >= $1 and total within dollars", all(a >= 1.0 for _, a in fit) and sum(a for _, a in fit) <= 11.4624, [(x["code"], a) for x, a in fit])
+check("11-09 case: $1 orders untouched, cut taken from bigger ones", all(a == 1.0 for x, a in fit if x["usd"] == 1.0) and dict((x["code"], a) for x, a in fit)["USO"] < 2.28, [(x["code"], a) for x, a in fit])
+fit = L.fit_us_buys(nb, 11.47)
+check("enough dollars -> amounts unchanged", [a for _, a in sorted(fit, key=lambda z: z[0]["code"])] == [u for _, u in sorted([(c, u) for c, u, _ in nov9])], fit)
+fit = L.fit_us_buys(nb, 5.0)
+codes = {x["code"] for x, _ in fit}
+check("$5 for $11.47 -> smallest targets dropped first, total within", "USO" in codes and "GLD" not in codes and sum(a for _, a in fit) <= 5.0 and all(a >= 1.0 for _, a in fit), [(x["code"], a) for x, a in fit])
+check("under $1 -> nothing", L.fit_us_buys(nb, 0.99) == [])
+
+import numpy as _np
+import scenario_desk as _SD
+real_eff = L.effective_weights
+
+
+def desk_nets_only(b, m):
+    cs = sorted(b)
+    w = _SD.net_inverse(_np.array([b[c] for c in cs]), cs)
+    return {c: float(x) for c, x in zip(cs, w) if x > 0}, dict(desk_ts="t")
+
+
+L.effective_weights = desk_nets_only
+w11 = {"069500": 0.0606, "229200": 0.0227, "091160": 0.1007, "091170": 0.0429, "114800": 0.0169, "153130": 0.0317, "SPY": 0.05, "SH": 0.0168}
+st_o = dict(current="c1", cycles={"c1": dict(weights=dict(w11))}, kr_trend=dict(state=0.0))
+wo, _ = L.target_weights(st_o, dict(markets, **{"091160": "KR", "091170": "KR", "153130": "KR", "229200": "KR", "SH": "US"}), "kr", False)
+L.effective_weights = real_eff
+check("model weights go to orders as the model set them (old kr_trend in state ignored, no hand-made inverse)", all(abs(wo.get(c, 0) - w11[c]) < 1e-9 for c in ("229200", "091160", "091170", "153130")) and "114800" not in wo, wo)
+check("desk netting of KR index vs inverse still applies", abs(wo.get("069500", 0) - (0.0606 - 0.0169)) < 1e-9, wo)
+check("desk netting of US index vs inverse still applies", abs(wo.get("SPY", 0) - (0.05 - 0.0168)) < 1e-9 and "SH" not in wo, wo)
+check("no hand-made KR trend rule left in the runner", not any(hasattr(L, n) for n in ("kr_xform", "kr_trend_state", "KR_RISK")))
+mk_k = dict(markets, **{"091170": "KR"})
+snap_k = dict(held={"091170": 1.0}, px={"091170": 14120.0, "114800": 6000.0, "SPY": 600.0}, krw=9_000.0, usd=0.0, fx=1400.0, value={"091170": 14120.0}, equity=23_120.0, vault=0.0)
+pk = L.make_plan({"091170": 0.0429, "SPY": 0.3, "114800": 0.0169}, snap_k, mk_k, rebalance=False)
+check("bank share far over the model target is sold on a non-rebalance day (R1)", any(x["code"] == "091170" and x["side"] == "SELL" for x in pk["kr"]), pk["kr"])
+
+import time as _t
+L.MARK_FLAG = os.path.join(tmp, "mark_now.flag")
+views = lambda: sum(1 for r in rows() if r["kind"] == "mark" and r.get("phase") == "view")
+v0 = views()
+at(2026, 11, 15, 3, 0)
+check("Sunday night, no refresh request -> no balance check", views() == v0)
+open(L.MARK_FLAG, "w").close()
+at(2026, 11, 15, 3, 1)
+check("refresh request -> balance checked at once, request cleared", views() == v0 + 1 and not os.path.exists(L.MARK_FLAG))
+open(L.MARK_FLAG, "w").close()
+t0 = _t.time()
+L.nap(30)
+check("wait loop wakes within a second on a refresh request", _t.time() - t0 < 1.5)
+os.remove(L.MARK_FLAG)
+t0 = _t.time()
+L.nap(2)
+check("wait loop sleeps its full time without a request", _t.time() - t0 >= 1.9)
+
+L.FX_FLAG = os.path.join(tmp, "fx_check.flag")
+
+
+def fx_book(usd, krw):
+    return dict(krw=krw, usd=usd, qty={}, cost={}, cost_krw={}, vault_krw=0.0, vault_usd=0.0, tax={}, tax_usd=0.0, realized=0.0, hwm=0.0, deposits=0.0, contributed=0.0, pending={})
+
+
+def fx_rows(kind):
+    return [r for r in rows() if r["kind"] == kind]
+
+
+tfx = FakeToss({}, px, krw=50_000.0, usd=17.43)
+sx = dict(book=fx_book(1.4214, 28_004.0), markets={"SPY": "US"}, fx_pending=dict(day="2026-11-10", usd=17.09, rate=1346.8))
+ax = L.Account(tfx, sx, ["SPY"], {"SPY": "US"})
+n_cr, n_ck = len(fx_rows("fx_credit")), len(fx_rows("fx_check"))
+L.check_fx(sx, ax)
+ck = fx_rows("fx_check")[-1]
+check("FX check (11-10 case): $16.00 found in the account moved to the book at once", abs(sx["book"]["usd"] - 17.4214) < 1e-9 and abs(sx["book"]["krw"] - (28_004.0 - 16.0 * 1346.8)) < 1e-6 and len(fx_rows("fx_credit")) == n_cr + 1, sx["book"])
+check("FX check: shortfall $1.09 kept pending and told in won", sx["fx_pending"] and abs(sx["fx_pending"]["usd"] - 1.09) < 1e-9 and ck["got"] == 16.0 and abs(ck["left"] - 1.09) < 1e-9 and ck["won_left"] == 1500 and "더 바꾸면" in ck["body"], (sx.get("fx_pending"), ck))
+tfx.usd += 1.09
+L.check_fx(sx, ax)
+ck = fx_rows("fx_check")[-1]
+check("FX check: second press after topping up credits the rest and clears the request", sx["fx_pending"] is None and abs(sx["book"]["usd"] - 18.5114) < 1e-9 and "다 찼습니다" in ck["body"], (sx.get("fx_pending"), ck))
+n_miss = len(fx_rows("fx_missing"))
+check("FX: US open after early credit -> nothing more to credit, no 'missing' alarm", L.credit_fx(sx, ax.snapshot()) == 0.0 and len(fx_rows("fx_missing")) == n_miss)
+sy = dict(book=fx_book(1.4214, 28_004.0), markets={"SPY": "US"}, fx_pending=dict(day="2026-11-10", usd=17.09, rate=1346.8))
+ty = FakeToss({}, px, krw=50_000.0, usd=17.43)
+ay = L.Account(ty, sy, ["SPY"], {"SPY": "US"})
+L.check_fx(sy, ay)
+L.credit_fx(sy, ay.snapshot())
+check("FX: part credited early, nothing more by US open -> no 'missing' alarm, request closed, buys use what came", sy["fx_pending"] is None and len(fx_rows("fx_missing")) == n_miss and abs(sy["book"]["usd"] - 17.4214) < 1e-9, sy)
+sz = dict(book=fx_book(1.4214, 28_004.0), markets={"SPY": "US"}, fx_pending=dict(day="2026-11-10", usd=5.0, rate=1400.0))
+tz = FakeToss({}, px, krw=50_000.0, usd=1.4214)
+az = L.Account(tz, sz, ["SPY"], {"SPY": "US"})
+L.check_fx(sz, az)
+ck = fx_rows("fx_check")[-1]
+check("FX check before converting: nothing credited, request kept, owner told the amount", ck["got"] == 0.0 and sz["fx_pending"]["usd"] == 5.0 and ck["won_left"] == 7000 and "안 보입니다" in ck["body"], ck)
+L.credit_fx(sz, az.snapshot())
+check("FX: never converted -> US open logs 'missing' as before", len(fx_rows("fx_missing")) == n_miss + 1 and sz["fx_pending"] is None)
+sn = dict(book=fx_book(1.4214, 28_004.0), markets={"SPY": "US"})
+L.check_fx(sn, L.Account(tz, sn, ["SPY"], {"SPY": "US"}))
+check("FX check with no open request -> says so, book untouched", "기다리는 환전 요청이 없습니다" in fx_rows("fx_check")[-1]["body"] and sn["book"]["usd"] == 1.4214)
+n_ck = len(fx_rows("fx_check"))
+open(L.FX_FLAG, "w").close()
+at(2026, 11, 15, 3, 2)
+check("'환전했어요' flag -> runner checks at once, flag cleared", len(fx_rows("fx_check")) == n_ck + 1 and not os.path.exists(L.FX_FLAG))
+open(L.FX_FLAG, "w").close()
+t0 = _t.time()
+L.nap(30)
+check("wait loop wakes within a second on '환전했어요'", _t.time() - t0 < 1.5)
+os.remove(L.FX_FLAG)
+
+sp = {"091160": 92580.0, "0167A0": 12460.0, "069500": 79000.0, "SPY": 600.0}
+mk_s = {"091160": "KR", "069500": "KR", "SPY": "US"}
+ws = {"091160": 0.1007, "069500": 0.0606, "SPY": 0.1}
+
+
+def sub_snap(eq, held=None, value=None):
+    value = value or {}
+    return dict(held=held or {}, px=dict(sp), value=value, krw=eq - sum(value.values()), usd=0.0, fx=1400.0, equity=eq)
+
+
+xs, su = L.kr_subs(ws, sub_snap(62_700.0))
+check("sub: semis target 6,251 < half of 92,580 -> its weight goes to 0167A0, other weights and the total unchanged", "091160" not in xs and abs(xs["0167A0"] - 0.1007) < 1e-12 and xs["069500"] == 0.0606 and xs["SPY"] == 0.1 and su["091160"]["sub"] == "0167A0" and su["091160"]["target_krw"] == 6251, (xs, su))
+check("sub: the model's own weights are not modified", ws == {"091160": 0.1007, "069500": 0.0606, "SPY": 0.1})
+kb = {x["code"]: x["qty"] for x in L.make_plan(xs, sub_snap(62_700.0), mk_s, rebalance=True)["kr"] if x["side"] == "BUY"}
+check("sub: tomorrow's case (book 62,700, target 6,251 >= half of 12,460) buys 1 share of 0167A0, none of 091160", kb.get("0167A0") == 1 and "091160" not in kb, kb)
+x52, _ = L.kr_subs(ws, sub_snap(52_700.0))
+kb = {x["code"] for x in L.make_plan(x52, sub_snap(52_700.0), mk_s, rebalance=True)["kr"] if x["side"] == "BUY"}
+check("sub: today's case (book 52,700, target 5,254 < half of 12,460) -> mapped but nothing bought, same half-share rule", "0167A0" in x52 and "0167A0" not in kb and "091160" not in kb, kb)
+xb, sb_ = L.kr_subs(ws, sub_snap(500_000.0))
+check("sub: book 500,000 (target 49,846 >= half of 92,580) -> original 091160 used, no substitute", xb == ws and sb_ == {}, (xb, sb_))
+xh, sh = L.kr_subs(ws, sub_snap(150_000.0, held={"091160": 1.0}, value={"091160": 92_580.0}))
+check("sub: original already held -> keep the original even if its target is small (no back-and-forth)", xh == ws and sh == {}, (xh, sh))
+xm, sm = L.kr_subs(ws, dict(sub_snap(62_700.0), px={c: v for c, v in sp.items() if c != "0167A0"}))
+check("sub: no price for the substitute -> original kept", xm == ws and sm == {}, (xm, sm))
+xw0, sw0 = L.kr_subs({"069500": 0.5, "SPY": 0.4}, sub_snap(62_700.0))
+check("sub: model gives semis 0 -> nothing substituted", "0167A0" not in xw0 and sw0 == {}, (xw0, sw0))
+s500 = sub_snap(500_000.0, held={"0167A0": 4.0}, value={"0167A0": 4 * 12_460.0})
+xr, _ = L.kr_subs(ws, s500)
+pr = L.make_plan(xr, s500, mk_s, rebalance=False)
+kr_r = {(x["code"], x["side"]): x["qty"] for x in pr["kr"]}
+check("sub: book grows past the original's half-share point -> sell all 0167A0, buy 091160", kr_r.get(("0167A0", "SELL")) == 4 and kr_r.get(("091160", "BUY")) == 1, pr["kr"])
+ta = FakeToss({}, sp, krw=62_700.0, usd=0.0)
+check("sub: account snapshot prices the substitute even before it is held", "0167A0" in L.Account(ta, dict(book=fx_book(0.0, 62_700.0)), list(mk_s), mk_s).snapshot()["px"])
+prev_live, prev_scen = os.environ.get("DOBBY_LIVE"), L.SCEN_ON
+os.environ["DOBBY_LIVE"] = "1"
+L.SCEN_ON = False
+tk_ = FakeToss({}, sp, krw=62_700.0, usd=0.0)
+sk = dict(book=fx_book(0.0, 62_700.0), current="c1", cycles={"c1": dict(weights=dict(ws))})
+L.run_kr(tk_, sk, L.Account(tk_, sk, list(mk_s), mk_s), "2026-11-11", False)
+ks = [r for r in rows() if r["kind"] == "kr_substitute"][-1]
+kr_placed = [p for p in tk_.placed if p["symbol"][:1].isdigit()]
+check("sub: run_kr orders 1 share of 0167A0, logs the swap, book holds it, model target still says 091160", kr_placed == [dict(symbol="0167A0", side="BUY", quantity=1, amount=None)] and ks["subs"]["091160"]["sub"] == "0167A0" and sk["book"]["qty"].get("0167A0") == 1 and "091160" in sk["last_target"] and "0167A0" not in sk["last_target"], (tk_.placed, ks, sk["book"]["qty"]))
+snap_k = L.Account(tk_, sk, list(mk_s), mk_s).snapshot()
+check("sub: held 0167A0 valued in won in the bot equity", abs(snap_k["value"]["0167A0"] - 12_460.0) < 1e-6, snap_k["value"])
+if prev_live is None:
+    os.environ.pop("DOBBY_LIVE", None)
+else:
+    os.environ["DOBBY_LIVE"] = prev_live
+L.SCEN_ON = prev_scen
+
+from toss import ApiError
+prev_live, prev_scen = os.environ.get("DOBBY_LIVE"), L.SCEN_ON
+os.environ["DOBBY_LIVE"] = "1"
+L.SCEN_ON = False
+bp = {"SPY": 600.0, "GLD": 250.0, "SMH": 300.0, "UUP": 27.0}
+bm = {c: "US" for c in bp}
+bw = {c: 0.2 for c in bp}
+
+
+def blk_run(day, reject=None, st=None, kr=False):
+    tb = FakeToss({}, bp, krw=0.0, usd=20.0)
+    tb.reject = reject or {}
+    sb = st or dict(book=fx_book(20.0, 0.0), current="c1", cycles={"c1": dict(weights=dict(bw))})
+    n0 = len(rows())
+    (L.run_kr if kr else L.run_us)(tb, sb, L.Account(tb, sb, list(bm), bm), day, True)
+    return tb, sb, rows()[n0:]
+
+
+tb, sb, new = blk_run("2026-11-10", {"UUP": ApiError(422, "prerequisite-required", "해외 파생 ETF 위험 고지 동의가 필요합니다", "rq1")})
+oe = [r for r in new if r["kind"] == "order_error"]
+check("reject: Toss's reason text and request id are logged on the failed order", len(oe) == 1 and oe[0]["code"] == "UUP" and oe[0]["code_detail"] == "prerequisite-required" and "위험 고지" in oe[0]["message"] and oe[0]["request_id"] == "rq1", oe)
+check("reject: other names filled, only UUP refused -> UUP blocked for 7 days", sorted(p["symbol"] for p in tb.placed) == ["GLD", "SMH", "SPY"] and sb["blocked"]["UUP"]["until"] == "2026-11-17" and any(r["kind"] == "blocked" and r["code"] == "UUP" for r in new), (tb.placed, sb.get("blocked")))
+sb["book"]["usd"] += 20.0
+tb2, sb, new = blk_run("2026-11-11", st=sb)
+check("reject: next night UUP is not ordered, a skip row says why and until when", "UUP" not in [p["symbol"] for p in tb2.placed] and any(r["kind"] == "skip" and r["code"] == "UUP" and "2026-11-17" in r["reason"] and "위험 고지" in r["reason"] for r in new), (tb2.placed, [r for r in new if r["kind"] == "skip"]))
+sk2 = dict(book=fx_book(0.0, 30_000.0), current="c1", cycles={"c1": dict(weights=dict(bw))}, blocked=dict(sb["blocked"]))
+_, sk2, new = blk_run("2026-11-12", st=sk2, kr=True)
+dp = [r for r in new if r["kind"] == "day_plan"][-1]
+check("reject: KR session no longer asks to convert dollars for UUP", not any(x["code"] == "UUP" for x in dp["us"]), dp["us"])
+tb3, sb, new = blk_run("2026-11-17", st=sb)
+check("reject: after 7 days UUP is tried again", "UUP" in [p["symbol"] for p in tb3.placed], tb3.placed)
+tb4, sb4, new = blk_run("2026-11-10", {c: ApiError(422, "http", "") for c in bp})
+check("reject: every order refused (account/time problem) -> nothing blocked", not sb4.get("blocked") and not tb4.placed, sb4.get("blocked"))
+tb5, sb5, new = blk_run("2026-11-10", {"UUP": ApiError(422, "insufficient-buying-power", "주문 가능 금액이 부족합니다")})
+check("reject: not-enough-cash refusal is not a reason to block the name", not sb5.get("blocked"), sb5.get("blocked"))
+tb6, sb6, new = blk_run("2026-11-10", {"UUP": ApiError(500, "http", "server error")})
+check("reject: server error (not 422) does not block", not sb6.get("blocked"), sb6.get("blocked"))
+held = dict(book=dict(fx_book(20.0, 0.0), qty={"UUP": 0.5}), blocked={"UUP": dict(day="2026-11-10", until="2026-11-17")})
+check("reject: a blocked name already held keeps its target (never force-sold)", "UUP" in L.drop_blocked(held, bw, "2026-11-11")[0])
+if prev_live is None:
+    os.environ.pop("DOBBY_LIVE", None)
+else:
+    os.environ["DOBBY_LIVE"] = prev_live
+L.SCEN_ON = prev_scen
+
+
+class TokT:
+    def __init__(self, exp, fail=False):
+        self.tok, self.exp, self.fail, self.issued = "a", exp, fail, 0
+
+    def _load_token(self):
+        pass
+
+    def _issue(self):
+        if self.fail:
+            raise RuntimeError("oauth down")
+        self.issued += 1
+        self.tok, self.exp = "b", clk[0] + 86400
+
+
+clk = [1_000_000.0]
+tk, ms = TokT(clk[0] + 10 * 3600), {}
+check("token with 10h left -> not renewed", not L.keep_token(tk, ms, lambda: clk[0]) and tk.issued == 0)
+tk.exp = clk[0] + 2 * 3600
+check("token with 2h left -> renewed so the desk never finds it expired", L.keep_token(tk, ms, lambda: clk[0]) and tk.issued == 1 and tk.exp > clk[0] + 23 * 3600)
+tk2, ms2 = TokT(clk[0] + 60, fail=True), {}
+check("renew failure -> logged, not raised", not L.keep_token(tk2, ms2, lambda: clk[0]) and any(r["kind"] == "token_renew_error" for r in rows()))
+clk[0] += 60
+tk2.fail = False
+check("after a failure, waits 10 min before retrying", not L.keep_token(tk2, ms2, lambda: clk[0]) and tk2.issued == 0)
+clk[0] += 600
+check("retries after 10 min", L.keep_token(tk2, ms2, lambda: clk[0]) and tk2.issued == 1)
 print(f"{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

@@ -189,6 +189,54 @@ def snapshot(inst, codes, D):
     return out
 
 
+BASE_DAYS = int(os.environ.get("NOSOCK_SCENARIO_BASE_DAYS", 2520))
+ANCHOR_K = float(os.environ.get("NOSOCK_SCENARIO_ANCHOR_K", 0.25))
+
+
+def base_rates(inst, codes, D, n=BASE_DAYS, h=20):
+    import bisect
+    out = {}
+    for c in codes:
+        ins = inst.get(c)
+        if ins is None:
+            continue
+        i = bisect.bisect_right(ins["days"], D) - 1
+        if i < 260:
+            continue
+        C = np.asarray(ins["C"][: i + 1], float) / np.asarray(ins["fxv"][: i + 1], float)
+        C = C[-(n + h):]
+        r = C[h:] / C[:-h] - 1
+        r = r[np.isfinite(r)]
+        if len(r) < 200:
+            continue
+        out[c] = dict(mean=round(100 * float(r.mean()), 2), up=round(float((r > 0).mean()), 2), p10=round(100 * float(np.percentile(r, 10)), 1), p90=round(100 * float(np.percentile(r, 90)), 1), sd=round(100 * float(r.std()), 2), n=int(len(r)))
+    return out
+
+
+def pair_inverse(R, codes, horizon=20):
+    for inv, und in INVERSE_PAIRS.items():
+        if inv in codes and und in codes:
+            R[:, codes.index(inv)] = -R[:, codes.index(und)] - INV_DRAG_20D * horizon / 20
+    return R
+
+
+def anchor(p, R, codes, base, k=ANCHOR_K):
+    R = R.copy()
+    shift = {}
+    for j, c in enumerate(codes):
+        b = base.get(c)
+        if not b or c in INVERSE_PAIRS:
+            continue
+        m = float(p @ R[:, j])
+        mu, sd = b["mean"] / 100, b["sd"] / 100
+        tgt = min(max(m, mu - k * sd), mu + k * sd)
+        if abs(tgt - m) > 1e-9:
+            R[:, j] += tgt - m
+            shift[c] = round(100 * (tgt - m), 2)
+    R = np.clip(R, -RMAX / 100, RMAX / 100)
+    return pair_inverse(R, codes), shift
+
+
 PROMPT = """너는 작은 자동매매 계좌(레버리지 없음, 공매도 없음, 국내·미국 ETF와 일부 개별주만 매수)의 시나리오 데스크다.
 오늘은 {today} (한국 시각 {now})이고, 마지막 종가 기준일은 {asof}이다.
 
@@ -198,6 +246,10 @@ PROMPT = """너는 작은 자동매매 계좌(레버리지 없음, 공매도 없
 3. 앞으로 20거래일에 대한 '함께 일어나는 큰 그림' 시나리오를 3~6개 써라. 서로 겹치지 않고 합치면 전부가 되게, 확률 합이 1이 되게.
    각 시나리오마다: 이름(한국어), 확률, 인과 사슬(예: 중간선거 결과 → 의회 구성 변화 → AI 규제 법안 가능성 → 반도체 하락), 각 후보 종목의 20거래일 예상 수익률(%), 나중에 맞았는지 채점할 수 있는 확인 지점(날짜·관찰 대상·기준값).
    확률은 근거(여론조사, 예측시장, 선물 가격, 전문가 전망 등)가 있으면 그걸 쓰고 출처를 붙여라.
+   상승 쪽 시나리오와 하락 쪽 시나리오를 같은 개수로 나눠라(어느 쪽도 아닌 혼조·잔여 시나리오는 따로 하나 둘 수 있다). 한쪽만 잘게 쪼개면 그쪽 확률이 부풀려진다.
+   각 종목의 확률 가중 평균 수익률은 후보 목록의 '과거 20거래일 평균'에서 출발해라. 뉴스는 대부분 이미 가격에 들어 있다. 평균에서 벗어나려면 아직 가격에 들어가지 않은 확인된 사실이 있어야 하고, 그 근거를 notes에 써라.
+   시나리오별 수익률이 그 종목의 과거 하위10%~상위10% 범위를 넘는 것은 2008년·2020년 같은 위기급 시나리오일 때만이다.
+   최종 평균은 시스템이 과거 평균 ± 표준편차의 1/4 안으로 맞춘다. 그러니 방향을 맞히는 것보다 종목 사이의 상대적 차이(어느 종목이 어느 시나리오에서 더 좋고 나쁜지)를 정확히 하는 데 힘을 써라.
 4. 예상 수익률은 후보 목록의 코드만 쓰고, 의견이 없는 종목은 빼라(0으로 처리됨). 범위는 -40 ~ +40.
 5. 진행 중인 충격 사건 장부(event_book)를 갱신해라. 시장을 지금 흔들고 있거나 곧 흔들 사건마다 하나씩. 아래 '이전 사건 장부'가 있으면 같은 사건은 같은 id를 유지하고, 끝난 사건은 state를 resolved로 남긴다.
    - type: war_geopolitics(전쟁·지정학) | credit(신용·금융회사 부실) | tightening(긴축·금리 충격) | trade_policy(관세·정책 충격) | pandemic | election | other
@@ -212,7 +264,7 @@ PROMPT = """너는 작은 자동매매 계좌(레버리지 없음, 공매도 없
 이전 사건 장부 (갱신해라):
 {event_book}
 
-후보 종목 (code, 시장, 마지막 종가일, 20일 수익%, 6개월 수익%, 1년 고점 대비%, 이름):
+후보 종목 (code, 시장, 마지막 종가일, 20일 수익%, 6개월 수익%, 1년 고점 대비%, 이름 | 과거 10년 20거래일 수익: 평균%, 오른 비율, 하위10%, 상위10%, 표준편차%):
 {cands}
 
 모델의 기본 비율 (가격 추세 모델, 이걸 기준으로 시나리오가 조정한다):
@@ -300,10 +352,7 @@ def validate(js, codes, horizon=20):
         for c, v in (s.get("returns_pct") or {}).items():
             if c in codes:
                 R[k, codes.index(c)] = max(-RMAX, min(RMAX, float(v))) / 100
-    for inv, und in INVERSE_PAIRS.items():
-        if inv in codes and und in codes:
-            R[:, codes.index(inv)] = -R[:, codes.index(und)] - INV_DRAG_20D * horizon / 20
-    return p, R
+    return p, pair_inverse(R, codes, horizon)
 
 
 def net_inverse(w, codes):
@@ -403,7 +452,9 @@ def run(trigger="morning"):
     json.dump(codes, open(CODES, "w", encoding="utf-8"))
     macro = macro_snapshot(today)
     events = upcoming(today)
-    cands = "\n".join(f"{x['code']}, {x['market']}, {x['last']}, {x['r20']:+.1f}, {x['r126']:+.1f}, {x['dd252']:+.1f}, {names.get(x['code'], x['code'])}" for x in snap)
+    br = base_rates(inst, codes, D)
+    bt = lambda c: f" | {br[c]['mean']:+.1f}, {100 * br[c]['up']:.0f}%, {br[c]['p10']:+.1f}, {br[c]['p90']:+.1f}, {br[c]['sd']:.1f}" if c in br else " | 기록 부족"
+    cands = "\n".join(f"{x['code']}, {x['market']}, {x['last']}, {x['r20']:+.1f}, {x['r126']:+.1f}, {x['dd252']:+.1f}, {names.get(x['code'], x['code'])}{bt(x['code'])}" for x in snap)
     base = "\n".join(f"{c} {100 * w:.1f}%" for c, w in sorted(w0d.items(), key=lambda kv: -kv[1])) + f"\n현금 {100 * max(0.0, 1 - sum(w0d.values())):.1f}%"
     prev_book = last_event_book()
     prompt = PROMPT.format(today=today, now=now().strftime("%H:%M"), asof=D, cands=cands, base=base, macro=json.dumps(macro, ensure_ascii=False), events=json.dumps(events, ensure_ascii=False),
@@ -414,10 +465,13 @@ def run(trigger="morning"):
     text, usage = codex(prompt)
     try:
         js = parse_json(text)
-        p, R = validate(js, codes)
+        p, R_raw = validate(js, codes)
     except Exception as e:
         log("scenario_error", day=today, error=type(e).__name__, raw=text[:20000], usage=usage)
         raise
+    R, shift = anchor(p, R_raw, codes, br)
+    exp_raw = {c: round(100 * float(p @ R_raw[:, j]), 2) for j, c in enumerate(codes)}
+    exp_pct = {c: round(100 * float(p @ R[:, j]), 2) for j, c in enumerate(codes)}
     w0 = np.array([w0d.get(c, 0.0) for c in codes])
     vols = realized_vols(inst, codes, D)
     for inv, und in INVERSE_PAIRS.items():
@@ -431,7 +485,7 @@ def run(trigger="morning"):
     record_event_calls(today, D, trigger, book)
     row = log("scenario", day=today, asof=D, issue_ids=issue_ids, trigger=trigger, fetched_at=fetched, base_source=base_src, cap=current_cap(), model=MODEL, usage=usage, prompt_sha=hashlib.sha256(prompt.encode()).hexdigest(), scenarios=js.get("scenarios"), news=js.get("news"), events=js.get("events"), event_book=book, notes=js.get("notes"),
               probabilities=[float(x) for x in p], base_weights={c: float(x) for c, x in zip(codes, w0) if x > 0}, tilted_weights={c: float(x) for c, x in zip(codes, w) if x > 1e-4}, tilt=tilt, moved=float(np.clip(w - w0, 0, None).sum()), opt_ok=bool(ok),
-              exp_log_base=eb, exp_log_tilt=et, worst_base=worst_b, worst_tilt=worst_t, vols=vols, sigma_ref=SIGMA_REF, paper=True, secs=round(time.time() - t0, 1), raw=text)
+              exp_log_base=eb, exp_log_tilt=et, worst_base=worst_b, worst_tilt=worst_t, vols=vols, sigma_ref=SIGMA_REF, base_rates=br, anchor_k=ANCHOR_K, anchor_shift=shift, exp_raw=exp_raw, exp_pct=exp_pct, paper=True, secs=round(time.time() - t0, 1), raw=text)
     print(f"{today} 기준 {D}, 시나리오 {len(p)}개, 걸린 시간 {row['secs']}s")
     for s, q in zip(js["scenarios"], p):
         print(f"  {100 * q:4.0f}% {s.get('name')}: " + " → ".join(s.get("chain", [])[:5]))
@@ -677,7 +731,7 @@ def dropbox_cycle(state):
 def watch():
     log("scenario_watch_start", cap=CAP, model=MODEL, dropbox=DROPBOX or None)
     last_pull, fail_until, last_urgent = 0.0, 0.0, 0.0
-    dstate = {}
+    dstate, tries, scored = {}, {}, {}
     while not os.path.exists(STOP):
         n = now()
         today = n.strftime("%Y-%m-%d")
@@ -695,7 +749,7 @@ def watch():
             try:
                 run()
             except Exception as e:
-                log("scenario_error", where="run", day=today, error=type(e).__name__)
+                log("scenario_error", where="run", day=today, error=type(e).__name__, detail=str(e)[:300])
                 fail_until = time.time() + 1800
         if os.path.exists(URGENT) and time.time() > fail_until and time.time() - last_urgent > 3600:
             src = open(URGENT).read().strip()
@@ -704,9 +758,33 @@ def watch():
             try:
                 run(trigger=f"urgent:{src}")
             except Exception as e:
-                log("scenario_error", where="urgent_run", error=type(e).__name__)
+                tries[src] = tries.get(src, 0) + 1
+                again = tries[src] < 3
+                log("scenario_error", where="urgent_run", error=type(e).__name__, detail=str(e)[:300], attempt=tries[src], retry_in_min=30 if again else None)
+                if again and not os.path.exists(URGENT):
+                    with open(URGENT, "w") as f:
+                        f.write(src)
+                    last_urgent, fail_until = 0.0, time.time() + 1800
+        slot = score_slot(n)
+        if slot and scored.get(slot) != today:
+            scored[slot] = today
+            try:
+                import scorecard
+                scorecard.main()
+                log("scorecard", slot=slot)
+            except Exception as e:
+                log("scenario_error", where="scorecard", error=type(e).__name__, detail=str(e)[:300])
         time.sleep(60)
     log("scenario_watch_stop")
+
+
+def score_slot(n):
+    hm = (n.hour, n.minute)
+    if (7, 10) <= hm < (8, 30):
+        return "after_us_close"
+    if (16, 10) <= hm < (20, 0):
+        return "after_kr_close"
+    return None
 
 
 if __name__ == "__main__":

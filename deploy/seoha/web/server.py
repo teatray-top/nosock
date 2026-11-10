@@ -186,6 +186,24 @@ def fx_requests(lr=None):
     return list(reversed(uniq))
 
 
+def fx_check(lr):
+    r = next((x for x in reversed(lr) if x.get("kind") == "fx_check"), None)
+    return {k: r.get(k) for k in ("ts", "got", "left", "won_left", "body")} if r else None
+
+
+def pnl_split(st, m):
+    b = st["book"]
+    held, val, fx = (m or {}).get("held") or {}, (m or {}).get("value") or {}, (m or {}).get("fx")
+    if not fx or set(held) != set(b["qty"]) or any(abs(held[c] - b["qty"][c]) > 1e-9 for c in held) or set(val) != set(held):
+        return None
+    mk = st.get("markets") or {}
+    hold = 0.0
+    for c, v in val.items():
+        us = mk.get(c, "US" if c in b.get("cost_krw", {}) else "KR") == "US"
+        hold += v - b["cost"].get(c, 0.0) * (fx if us else 1.0)
+    return dict(ts=m["ts"], hold=hold, sold=b.get("realized", 0.0))
+
+
 def live_state(lr):
     plans = [r for r in lr if r.get("kind") == "plan"]
     marks = [dict(ts=r["ts"], equity=r["equity"], krw=r.get("krw"), usd=r.get("usd"), fx=r.get("fx"), phase=r.get("phase"), vault=r.get("vault"), tax_reserve=r.get("tax_reserve"), contributed=r.get("contributed")) for r in lr if r.get("kind") == "mark"]
@@ -195,13 +213,40 @@ def live_state(lr):
     starts = [r for r in lr if r.get("kind") in ("start", "stop")]
     vault = next((r for r in reversed(lr) if r.get("kind") == "vault"), None)
     mode_row = next((r for r in reversed(lr) if r.get("kind") in ("start", "mark", "plan") and "live" in r), None)
-    return dict(plan=plans[-1] if plans else None, plans=[dict(ts=p["ts"], cycle=p["cycle"], decided_on=p["decided_on"], weights=p["weights"]) for p in plans[-30:]], marks=marks[-2000:], last_mark=last_mark, orders=orders, errors=errors, last_start=starts[-1] if starts else None, vault=vault, live=bool(mode_row and mode_row.get("live")))
+    used = next((r for r in reversed(lr) if r.get("kind") == "weights_used"), None)
+    if used and plans and used["ts"] < plans[-1]["ts"]:
+        used = None
+    kr = next((r for r in reversed(lr) if r.get("kind") == "kr_trend"), None)
+    sub = next((r for r in reversed(lr) if r.get("kind") == "kr_substitute"), None)
+    subs = {o: v.get("sub") for o, v in (sub.get("subs") or {}).items()} if sub else {}
+    target = dict(ts=used["ts"], phase=used.get("phase"), source=used.get("source"), weights=used.get("weights") or {}, subs=subs) if used else None
+    kr_trend = {k: kr.get(k) for k in ("ts", "day", "D", "state", "close", "ma", "ratio", "changed")} if kr else None
+    try:
+        split = pnl_split(json.load(open(LIVE_STATE, encoding="utf-8")), last_mark)
+    except (OSError, ValueError, KeyError, TypeError):
+        split = None
+    return dict(plan=plans[-1] if plans else None, target=target, kr_trend=kr_trend, pnl_split=split, plans=[dict(ts=p["ts"], cycle=p["cycle"], decided_on=p["decided_on"], weights=p["weights"]) for p in plans[-30:]], marks=marks[-2000:], last_mark=last_mark, orders=orders, errors=errors, last_start=starts[-1] if starts else None, vault=vault, live=bool(mode_row and mode_row.get("live")))
 
 
 DOT_POSTS = []
 DESK_LOG = os.environ.get("NOSOCK_DESK_LOG", "/var/lib/nosock/runs/live/scenario_desk.jsonl")
 LIVE_STATE = os.environ.get("NOSOCK_LIVE_STATE", "/var/lib/nosock/runs/live/live_nosock_state.json")
 EVENTS_DIR = os.path.join(APP_DIR, "data", "events")
+SCORECARD = os.environ.get("NOSOCK_SCORECARD", "/var/lib/nosock/runs/live/scorecard.json")
+MARK_FLAG = os.path.join(os.path.dirname(LIVE_LOG), "mark_now.flag")
+FX_FLAG = os.path.join(os.path.dirname(LIVE_LOG), "fx_check.flag")
+REFRESH = {"last": 0.0}
+SC_KEYS = ("author", "code", "direction", "magnitude", "horizon", "at", "entry_day", "end_day", "matured", "days", "ret", "net", "hit", "title", "base")
+
+
+def scorecard():
+    try:
+        sc = json.load(open(SCORECARD, encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    c = sc.get("calls") or {}
+    items = [{k: x.get(k) for k in SC_KEYS} for x in (c.get("items") or [])]
+    return dict(asof=sc.get("asof"), last_close=sc.get("last_close"), desk=sc.get("desk"), calls=dict(total=c.get("total"), scored=c.get("scored"), by_author=c.get("by_author") or {}, items=items[-400:]))
 
 
 DOT_ACTIONS = {"context": "상황 조회 (GET /dot/context)", "latest": "최신 시나리오 조회", "issues": "이슈 제출 (JSON)", "desk": "시나리오 재계산 요청 (사유)", "scenarios": "시나리오 직접 제출 (JSON)"}
@@ -376,11 +421,18 @@ def alerts(lr):
         k = r.get("kind")
         if k == "order" and r.get("status") in ("FILLED", "PARTIAL_FILLED"):
             side = "매수" if r["side"] == "BUY" else "매도"
-            out.append(dict(id="ord-" + r.get("client_order_id", r["ts"]), title=f"{side} 체결: {r['code']}", body=f"{r.get('filled_qty')}주, 평균 {r.get('avg_price')} ({r['ts'][11:16]})"))
+            q, p = float(r.get("filled_qty") or 0), float(r.get("avg_price") or 0)
+            tot = float(r.get("filled_amount") or q * p)
+            money = f"{p:,.0f}원 = {tot:,.0f}원" if str(r["code"])[:1].isdigit() else f"${p:,.2f} = ${tot:,.2f}"
+            out.append(dict(id="ord-" + r.get("client_order_id", r["ts"]), title=f"{side} 체결: {r['code']}", body=f"{q:g}주 × {money} ({r['ts'][11:16]})"))
         elif k in ("order_error", "refuse", "error"):
-            out.append(dict(id="err-" + r["ts"] + "-" + str(r.get("code", "")), title="NoSock 주문 문제", body=f"{r.get('code', '')} {r.get('error') or r.get('reason') or ''} {r.get('code_detail') or ''}".strip()))
+            out.append(dict(id="err-" + r["ts"] + "-" + str(r.get("code", "")), title="NoSock 주문 문제", body=f"{r.get('code', '')} {r.get('error') or r.get('reason') or ''} {r.get('code_detail') or ''} {r.get('message') or ''}".strip()))
+        elif k == "blocked":
+            out.append(dict(id="blk-" + r["ts"] + "-" + str(r.get("code", "")), title="NoSock 종목 건너뜀", body=f"토스가 {r.get('code', '')} 매수를 거절했습니다({r.get('message') or r.get('error') or ''}). {r.get('until', '')}까지 이 종목은 사지 않고 그 몫은 현금으로 둡니다."))
         elif k == "deposit_short":
             out.append(dict(id="dep-" + str(r.get("day")), title="NoSock 원화 부족", body=f"계좌에 꺼낼 원화가 {int(r.get('amount') or 0):,}원뿐이라 오늘은 그만큼만 넣었습니다. 도비는 있는 돈으로만 굴립니다."))
+        elif k == "fx_check":
+            out.append(dict(id="fxc-" + r["ts"], title="NoSock 환전 확인", body=r.get("body") or ""))
         elif k == "fx_missing":
             out.append(dict(id="fxm-" + r["ts"], title="NoSock 환전 안 됨", body=f"요청한 ${r.get('requested')}가 계좌에 없어 오늘 밤 미국 매수를 건너뛰었습니다."))
         elif k == "plan":
@@ -398,7 +450,7 @@ def state():
     a = alloc[-1] if alloc else None
     lr = live_rows()
     lv = live_state(lr)
-    return dict(updated=time.strftime("%Y-%m-%d %H:%M:%S"), mom_last=last, mom_history=hist, alloc_last=None if not a else dict(day=a["day"], total=a["total"], vault=a["vault"], deposits=a["deposits"], account=a["account_marked"]), fx=fx_requests(lr), alerts=alerts(lr), live=lv, skips=skips, paper=not lv["live"], ping=load("ping.json", None), app=load(os.path.join("app", "version.json"), None))
+    return dict(updated=time.strftime("%Y-%m-%d %H:%M:%S"), mom_last=last, mom_history=hist, alloc_last=None if not a else dict(day=a["day"], total=a["total"], vault=a["vault"], deposits=a["deposits"], account=a["account_marked"]), fx=fx_requests(lr), fx_check=fx_check(lr), alerts=alerts(lr), live=lv, scorecard=scorecard(), skips=skips, paper=not lv["live"], ping=load("ping.json", None), app=load(os.path.join("app", "version.json"), None))
 
 
 def send_push(payload):
@@ -709,6 +761,18 @@ class H(BaseHTTPRequestHandler):
                 save("ping.json", {"id": time.strftime("%Y%m%d%H%M%S"), "at": time.strftime("%Y-%m-%d %H:%M:%S")})
             n = send_push(dict(id="test-" + time.strftime("%H%M%S"), title="NoSock 알림 테스트", body="알림이 정상적으로 도착했습니다.", url=f"{BASE}/"))
             return self.send(200, {"sent": n})
+        if p == "/api/live/refresh":
+            err = None
+            with LOCK:
+                now = time.time()
+                if now - REFRESH["last"] >= 10:
+                    REFRESH["last"] = now
+                    try:
+                        with open(MARK_FLAG, "w") as f:
+                            f.write(str(int(now)))
+                    except OSError as e:
+                        err = type(e).__name__
+            return self.send(500, {"error": err}) if err else self.send(200, {"ok": True})
         if p == "/api/bt/run":
             try:
                 q = bt_clean(b)
@@ -729,7 +793,13 @@ class H(BaseHTTPRequestHandler):
                 done = load("fx_done.json", {})
                 done[fid] = time.strftime("%Y-%m-%d %H:%M:%S")
                 save("fx_done.json", done)
-            return self.send(200, {"ok": True})
+                try:
+                    with open(FX_FLAG, "w") as f:
+                        f.write(str(int(time.time())))
+                    check = True
+                except OSError:
+                    check = False
+            return self.send(200, {"ok": True, "check": check})
         return self.send(404, {"error": "not found"})
 
 

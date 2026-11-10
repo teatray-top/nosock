@@ -19,6 +19,15 @@ const NSChart = (() => {
     return s + Math.round(a).toLocaleString("ko-KR");
   }
 
+  function tickLabel(v, step) {
+    if (v == null || !isFinite(v)) return "-";
+    const a = Math.abs(v), s = v < 0 ? "−" : "";
+    const dec = (unit) => Math.max(0, Math.ceil(-Math.log10(step / unit) - 1e-9));
+    if (a >= 1e8 && dec(1e8) <= 2) return s + (a / 1e8).toLocaleString("ko-KR", { minimumFractionDigits: dec(1e8), maximumFractionDigits: dec(1e8) }) + "억";
+    if (a >= 1e4 && dec(1e4) <= 1) return s + (a / 1e4).toLocaleString("ko-KR", { minimumFractionDigits: dec(1e4), maximumFractionDigits: dec(1e4) }) + "만";
+    return s + Math.round(a).toLocaleString("ko-KR");
+  }
+
   function niceTicks(lo, hi, n) {
     const span = hi - lo;
     if (!(span > 0)) return [lo];
@@ -114,18 +123,17 @@ const NSChart = (() => {
         [(i) => days[i].length > 10 && days[i].slice(11, 13) !== days[i - 1].slice(11, 13), (d) => d.slice(11, 13) + "시"],
         [() => true, (d) => (d.length > 10 ? d.slice(11, 16) : d.slice(5, 7) + "." + d.slice(8, 10))],
       ];
-      let pick = null;
+      let dense = null;
       for (let L = levels.length - 1; L >= 0; L--) {
         const [test, fmt] = levels[L];
         const idx = [];
         for (let i = Math.max(1, a); i <= b; i++) if (test(i)) idx.push(i);
-        if (idx.length <= maxN && idx.length >= 2) { pick = [idx, fmt]; break; }
-        if (L === 0) {
-          const stride = Math.ceil(idx.length / maxN);
-          pick = [idx.filter((_, k) => k % stride === 0), fmt];
-        }
+        if (idx.length <= maxN && idx.length >= 2) return [idx, fmt];
+        if (idx.length > maxN) dense = [idx, fmt];
       }
-      return pick;
+      if (!dense) return null;
+      const stride = Math.ceil(dense[0].length / maxN);
+      return [dense[0].filter((_, k) => k % stride === 0), dense[1]];
     }
 
     function drawData(ctx) {
@@ -149,7 +157,7 @@ const NSChart = (() => {
         c.lineTo(right, y);
         c.stroke();
         c.fillStyle = col.ink3;
-        c.fillText(compact(t), W - 2, Math.min(Math.max(y, top + 6), bot - 6));
+        c.fillText((cfg.yfmt || tickLabel)(t, ticks.length > 1 ? ticks[1] - ticks[0] : Math.abs(t) || 1), W - 2, Math.min(Math.max(y, top + 6), bot - 6));
       }
       const xt = xTicks(a, b);
       c.textAlign = "center";
@@ -170,6 +178,20 @@ const NSChart = (() => {
           lastR = cx + w / 2;
         }
       }
+      c.strokeStyle = col.ink3;
+      c.lineWidth = 1;
+      c.setLineDash([3, 3]);
+      for (let i = Math.max(1, a); i <= b; i++) {
+        if (days[i].length <= 10 || days[i - 1].length <= 10) continue;
+        const t0 = Date.parse(days[i - 1].replace(" ", "T") + ":00Z"), t1 = Date.parse(days[i].replace(" ", "T") + ":00Z");
+        if (!(t1 - t0 >= 2 * 3600e3)) continue;
+        const x = Math.round((X(i - 1) + X(i)) / 2) + 0.5;
+        c.beginPath();
+        c.moveTo(x, top);
+        c.lineTo(x, bot);
+        c.stroke();
+      }
+      c.setLineDash([]);
       c.save();
       c.beginPath();
       c.rect(left, top - 3, pw(), ph() + 6);
