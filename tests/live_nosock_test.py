@@ -14,6 +14,7 @@ os.environ.pop("NOSOCK_SEED", None)
 import live_nosock as L
 
 L.RUNS = tmp
+L.RESEND_FOR = 0
 open(os.path.join(tmp, "adopt.txt"), "w").write("FIVN\n")
 PASS, FAIL = [], []
 

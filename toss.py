@@ -1,3 +1,4 @@
+import gzip
 import json
 import os
 import sys
@@ -5,12 +6,22 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 
 import cred
 
 BASE = "https://openapi.tossinvest.com"
 TOKEN_FILE = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "penny", "toss_token.json")
 CRED_TARGET = os.environ.get("TOSS_CRED", "TossOpenAPI")
+
+
+def unzip(raw):
+    if raw[:2] != bytes((0x1F, 0x8B)):
+        return raw
+    try:
+        return gzip.decompress(raw)
+    except (OSError, EOFError, zlib.error):
+        return raw
 
 
 class ApiError(Exception):
@@ -76,9 +87,9 @@ class Toss:
             req = urllib.request.Request(BASE + "/oauth2/token", data=body, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
             try:
                 with urllib.request.urlopen(req, timeout=20) as r:
-                    t = json.loads(r.read())
+                    t = json.loads(unzip(r.read()))
             except urllib.error.HTTPError as e:
-                raise ApiError(e.code, "oauth", e.read().decode("utf-8", "ignore")[:300])
+                raise ApiError(e.code, "oauth", unzip(e.read()).decode("utf-8", "ignore")[:300])
             self.tok, self.exp = t["access_token"], time.time() + int(t.get("expires_in", 3600))
             tmp = TOKEN_FILE + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
@@ -101,9 +112,9 @@ class Toss:
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
-                return json.loads(r.read())
+                return json.loads(unzip(r.read()))
         except urllib.error.HTTPError as e:
-            raw = e.read().decode("utf-8", "ignore")
+            raw = unzip(e.read()).decode("utf-8", "ignore")
             try:
                 j = json.loads(raw)
             except ValueError:

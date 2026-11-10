@@ -110,6 +110,7 @@ function renderNow() {
   const recentErr = (lv.errors || []).filter((e) => Date.now() - Date.parse(e.ts) < 3600e3);
   if (!lv.last_start) rl.innerHTML = `<i></i><span>자동 매매가 아직 시작되지 않았습니다.</span>`;
   else if (lv.last_start.kind === "stop") rl.innerHTML = `<i></i><span><b>멈춤</b> ${kstStamp(lv.last_start.ts)}</span>`;
+  else if (lv.runner && lv.runner.silent) rl.innerHTML = `<i class="err"></i><span><b>실행기 응답 없음</b>, 마지막 신호 ${kstStamp(lv.runner.beat).slice(5)} (${Math.floor(lv.runner.age / 60)}분 전). 주문과 잔고 확인이 멈춰 있습니다.</span>`;
   else rl.innerHTML = `<i class="${recentErr.length ? "err" : "on"}"></i><span><b>${lv.live ? "자동 실주문 켜짐" : "드라이런 (주문 안 냄)"}</b>${lm ? `, 마지막 확인 ${kstStamp(lm.ts).slice(5)}` : ""}${freshening ? ", 잔고 확인 중" : ""}${recentErr.length ? `, 최근 오류 ${recentErr.length}건` : ""}</span>`;
   $("mode").textContent = lv.live ? "실계좌" : "드라이런";
   $("mode").classList.toggle("live", !!lv.live);

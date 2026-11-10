@@ -1,6 +1,8 @@
+import http.client
 import json
 import math
 import os
+import shutil
 import sys
 import time
 import traceback
@@ -21,6 +23,10 @@ STATE = os.environ.get("NOSOCK_STATE", os.path.join(RUNS, "live_nosock_state.jso
 STOP = os.path.join(RUNS, "live_nosock.stop")
 MARK_FLAG = os.path.join(RUNS, "mark_now.flag")
 FX_FLAG = os.path.join(RUNS, "fx_check.flag")
+BEAT = os.path.join(os.path.dirname(LOG), "live_nosock.beat")
+BACKUP = os.environ.get("NOSOCK_BACKUP", os.path.join(os.path.dirname(STATE), "backup"))
+BACKUP_KEEP = 30
+RESEND_FOR = 120
 MAX_EQUITY = float(os.environ.get("LIVE_MAX_EQUITY", 5_000_000))
 DAILY_DEPOSIT = float(os.environ.get("NOSOCK_DAILY_DEPOSIT", 10_000))
 SEED = float(os.environ.get("NOSOCK_SEED", 0))
@@ -53,18 +59,115 @@ def log(kind, **kw):
     return row
 
 
+class LedgerError(Exception):
+    pass
+
+
 def load_state():
-    try:
-        return json.load(open(STATE, encoding="utf-8"))
-    except (OSError, ValueError):
+    if not os.path.exists(STATE):
         return {}
+    try:
+        with open(STATE, encoding="utf-8") as f:
+            s = json.load(f)
+    except (OSError, ValueError) as e:
+        raise LedgerError(f"장부 파일을 읽지 못했습니다({type(e).__name__})")
+    if not isinstance(s, dict):
+        raise LedgerError("장부 파일 내용이 장부 형식이 아닙니다")
+    return s
+
+
+def book_seen():
+    if os.path.isdir(BACKUP) and any(x.startswith("live_nosock_state.") for x in os.listdir(BACKUP)):
+        return True
+    try:
+        with open(LOG, encoding="utf-8") as f:
+            return any('"kind": "mark"' in line for line in f)
+    except OSError:
+        return False
+
+
+def open_ledger():
+    try:
+        st = load_state()
+        if "book" not in st and book_seen():
+            raise LedgerError("장부 파일이 없거나 장부가 비어 있는데 이전 거래 기록은 남아 있습니다")
+        return st
+    except LedgerError as e:
+        log("refuse", reason=f"{e}. 새 장부를 만들지 않고 멈춥니다. {os.path.basename(STATE)}.prev 나 backup 폴더의 사본으로 되돌린 뒤 다시 시작해야 합니다.")
+        log("stop", reason="refused")
+        return None
+
+
+def write_tmp(p, s):
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(s, f, ensure_ascii=False, indent=1, default=float)
+        f.flush()
+        os.fsync(f.fileno())
+    return tmp
+
+
+def keep_prev():
+    try:
+        with open(STATE, "rb") as f:
+            raw = f.read()
+        if not isinstance(json.loads(raw), dict):
+            return
+        tmp = STATE + ".prev.tmp"
+        with open(tmp, "wb") as f:
+            f.write(raw)
+        os.replace(tmp, STATE + ".prev")
+    except (OSError, ValueError):
+        return
 
 
 def save_state(s):
-    tmp = STATE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(s, f, ensure_ascii=False, indent=1, default=float)
+    tmp = write_tmp(STATE, s)
+    keep_prev()
     os.replace(tmp, STATE)
+
+
+def backup(st, day):
+    os.makedirs(BACKUP, exist_ok=True)
+    p = os.path.join(BACKUP, f"live_nosock_state.{day}.json")
+    if os.path.exists(p):
+        return None
+    os.replace(write_tmp(p, st), p)
+    old = sorted(x for x in os.listdir(BACKUP) if x.startswith("live_nosock_state.") and x.endswith(".json"))
+    for x in old[:-BACKUP_KEEP]:
+        os.remove(os.path.join(BACKUP, x))
+    lb = os.path.join(BACKUP, os.path.basename(LOG))
+    if os.path.exists(lb) and os.path.getsize(LOG) < os.path.getsize(lb):
+        log("error", error="backup", where="backup", message="거래 기록 파일이 지난 백업보다 작아졌습니다. 기록 백업은 덮어쓰지 않고 그대로 뒀습니다.")
+    else:
+        shutil.copyfile(LOG, lb + ".tmp")
+        os.replace(lb + ".tmp", lb)
+    return log("backup", day=day, state=p, kept=min(len(old), BACKUP_KEEP))
+
+
+def daily_backup(st, ms, n):
+    day = n.strftime("%Y-%m-%d")
+    if ms.get("backup_try") == day or "book" not in st or near_open(n):
+        return
+    ms["backup_try"] = day
+    try:
+        backup(st, day)
+    except Exception as e:
+        log("error", error=type(e).__name__, where="backup", message=f"장부 백업 실패: {str(e)[:150]}")
+
+
+BEAT_AT = [0.0]
+
+
+def beat():
+    if 0 <= time.time() - BEAT_AT[0] < 5:
+        return
+    BEAT_AT[0] = time.time()
+    try:
+        with open(BEAT, "w", encoding="utf-8") as f:
+            f.write(now().isoformat(timespec="seconds"))
+    except OSError:
+        pass
 
 
 def listfile(name):
@@ -461,19 +564,46 @@ def wait_order(t, oid, timeout=90):
     t0 = time.time()
     o = t.order(oid)
     while time.time() - t0 < timeout and o["status"] not in FINAL:
+        beat()
         time.sleep(2)
         o = t.order(oid)
     return o
+
+
+def unsure(e):
+    if isinstance(e, PermissionError):
+        return False
+    status = getattr(e, "status", None)
+    if status is not None:
+        return status >= 500 or status in (408, 429) or (status == 409 and getattr(e, "code", None) == "request-in-progress")
+    return isinstance(e, (OSError, ValueError, http.client.HTTPException))
+
+
+def send_order(t, x, cid, kw):
+    t0, n = time.time(), 0
+    while True:
+        try:
+            return t.place(x["code"], x["side"], "MARKET", client_order_id=cid, **kw), n
+        except Exception as e:
+            e.resent = n
+            if not unsure(e) or time.time() - t0 >= RESEND_FOR:
+                raise
+            n += 1
+            beat()
+            time.sleep(min(3 * n, 15))
 
 
 def place(t, st, cycle, x, market, fx, **kw):
     cid = f"ns-{cycle}-{x['code']}-{x['side'][0]}-{int(time.time())}"
     if not live_on():
         return log("dry_order", cycle=cycle, code=x["code"], side=x["side"], client_order_id=cid, **kw)
+    beat()
     try:
-        r = t.place(x["code"], x["side"], "MARKET", client_order_id=cid, **kw)
+        r, resent = send_order(t, x, cid, kw)
     except Exception as e:
-        return log("order_error", cycle=cycle, code=x["code"], side=x["side"], client_order_id=cid, error=type(e).__name__, code_detail=getattr(e, "code", None), status=getattr(e, "status", None), message=getattr(e, "message", None), request_id=getattr(e, "request_id", None), request=kw)
+        lost, resent = unsure(e), getattr(e, "resent", 0)
+        msg = f"응답을 받지 못해 같은 주문번호로 {resent}번 다시 보냈지만 결과를 확인하지 못했습니다. 토스 앱에서 {x['code']} 주문이 들어갔는지 확인해 주세요." if lost else getattr(e, "message", None)
+        return log("order_error", cycle=cycle, code=x["code"], side=x["side"], client_order_id=cid, error=type(e).__name__, code_detail=getattr(e, "code", None), status=getattr(e, "status", None), message=msg, request_id=getattr(e, "request_id", None), resent=resent, lost=lost, detail=str(e)[:200] if lost else None, request=kw)
     oid = r["orderId"]
     try:
         o = wait_order(t, oid)
@@ -486,7 +616,7 @@ def place(t, st, cycle, x, market, fx, **kw):
     if o["status"] not in FINAL:
         st["book"]["pending"][oid] = dict(code=x["code"], side=x["side"], market=market, q=q, gross=gross, fee=fee, px=x["px"])
     save_state(st)
-    return log("order", cycle=cycle, code=x["code"], side=x["side"], client_order_id=cid, order_id=oid, status=o["status"], filled_qty=q, avg_price=(gross / q if q else None), filled_amount=gross, fee=fee, request=kw)
+    return log("order", cycle=cycle, code=x["code"], side=x["side"], client_order_id=cid, order_id=oid, status=o["status"], filled_qty=q, avg_price=(gross / q if q else None), filled_amount=gross, fee=fee, resent=resent, request=kw)
 
 
 def reconcile(t, st, fx):
@@ -929,16 +1059,20 @@ def keep_token(t, ms, clock=time.time):
 
 
 def loop():
+    st = open_ledger()
+    if st is None:
+        return
     from toss import Toss
     t = Toss()
     t.account = t.accounts()[0]["accountSeq"]
-    st = load_state()
     log("start", max_equity=MAX_EQUITY, daily_deposit=DAILY_DEPOSIT, seed=SEED, adopt=listfile("adopt.txt"), state_cycle=st.get("current"))
     ms = {}
     while True:
         if os.path.exists(STOP):
             log("stop", reason="stop file")
             return
+        beat()
+        daily_backup(st, ms, now())
         keep_token(t, ms)
         try:
             if step(t, st, now(), ms) == "exit":

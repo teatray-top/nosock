@@ -11,9 +11,11 @@ import subprocess
 import uuid
 import threading
 import time
+from datetime import datetime, timedelta
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
+from zoneinfo import ZoneInfo
 
 INBOX = os.environ.get("NOSOCK_INBOX", "/srv/nosock-inbox")
 STATE = os.environ.get("NOSOCK_STATE", "/var/lib/nosock/web")
@@ -235,6 +237,10 @@ EVENTS_DIR = os.path.join(APP_DIR, "data", "events")
 SCORECARD = os.environ.get("NOSOCK_SCORECARD", "/var/lib/nosock/runs/live/scorecard.json")
 MARK_FLAG = os.path.join(os.path.dirname(LIVE_LOG), "mark_now.flag")
 FX_FLAG = os.path.join(os.path.dirname(LIVE_LOG), "fx_check.flag")
+BEAT = os.path.join(os.path.dirname(LIVE_LOG), "live_nosock.beat")
+BEAT_STALE, QUIET = 600, 1800
+KST, NYT = ZoneInfo("Asia/Seoul"), ZoneInfo("America/New_York")
+ACTIVE = ("start", "mark", "order", "dry_order", "order_error", "day_plan")
 REFRESH = {"last": 0.0}
 SC_KEYS = ("author", "code", "direction", "magnitude", "horizon", "at", "entry_day", "end_day", "matured", "days", "ret", "net", "hit", "title", "base")
 
@@ -408,6 +414,68 @@ def issues_check(js):
     return None
 
 
+def live_book():
+    try:
+        s = json.load(open(LIVE_STATE, encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return s if isinstance(s, dict) else None
+
+
+def beat_time():
+    try:
+        return os.path.getmtime(BEAT)
+    except OSError:
+        return None
+
+
+def row_time(r):
+    try:
+        return datetime.fromisoformat(r["ts"])
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def in_hm(n, a, b):
+    return a[0] * 60 + a[1] <= n.hour * 60 + n.minute <= b[0] * 60 + b[1]
+
+
+def mark_window(n):
+    k, ny = n.astimezone(KST), n.astimezone(NYT)
+    return in_hm(k, (9, 0), (15, 35)) or (ny.weekday() < 5 and in_hm(ny, (9, 20), (16, 5)))
+
+
+def watch(lr, st, beat, n):
+    k, ny = n.astimezone(KST), n.astimezone(NYT)
+    age = None if beat is None else n.timestamp() - beat
+    silent = age is not None and age > BEAT_STALE
+    info = dict(beat=None if beat is None else datetime.fromtimestamp(beat, KST).isoformat(timespec="seconds"), age=None if age is None else int(age), silent=silent)
+    out = []
+    if silent:
+        since = datetime.fromtimestamp(beat, KST).strftime("%m-%d %H:%M")
+        last = next((r for r in reversed(lr) if r.get("kind") in ("start", "stop")), None)
+        if last and last.get("kind") == "stop":
+            body = f"도비 실행기가 꺼져 있습니다(마지막 신호 {since}). 다시 켜기 전에는 주문도 잔고 확인도 하지 않습니다."
+        else:
+            body = f"도비 실행기가 {since} 이후 신호가 없습니다. 죽었거나 멈춘 것으로 보이며, 그동안 주문도 잔고 확인도 하지 않습니다."
+        out.append(dict(id=f"sil-{int(beat)}", title="NoSock 실행기 멈춤", body=body))
+    if not isinstance(st, dict) or "book" not in st:
+        return info, out
+    if st.get("markets") and not silent and mark_window(n) and mark_window(n - timedelta(seconds=QUIET)):
+        act = next((r for r in reversed(lr) if r.get("kind") in ACTIVE), None)
+        at = row_time(act) if act else None
+        if at is None or (n - at).total_seconds() > QUIET:
+            gap = f"{at.astimezone(KST).strftime('%m-%d %H:%M')} 이후 30분 넘게 잔고 확인이나 주문 기록이 없습니다" if at else "잔고 확인이나 주문 기록이 하나도 없습니다"
+            out.append(dict(id=f"quiet-{act['ts'] if at else 'none'}", title="NoSock 확인 기록 끊김", body=f"장중인데 {gap}. 실행기가 켜져 있어도 일을 못 하고 있을 수 있습니다."))
+    today = k.strftime("%Y-%m-%d")
+    if k.weekday() < 5 and k.hour * 60 + k.minute >= 9 * 60 + 30 and st.get("kr_done_for") != today:
+        out.append(dict(id=f"miss-kr-{today}", title="NoSock 국내 주문 안 돎", body=f"오늘({today}) 09:30까지 국내 주문 단계가 돌지 않았습니다. 휴장일이거나 개장이 늦는 날이면 정상입니다."))
+    day = st.get("checked_day")
+    if day and ny.weekday() < 5 and ny.strftime("%Y-%m-%d") >= day and ny.hour * 60 + ny.minute >= 10 * 60 + 15 and st.get("kr_done_for") == day and st.get("us_done_for") != day:
+        out.append(dict(id=f"miss-us-{day}", title="NoSock 미국 주문 안 돎", body=f"미국장이 열리고 45분이 지났는데 {day} 계획의 미국 주문 단계가 돌지 않았습니다. 미국 휴장일이면 정상입니다."))
+    return info, out
+
+
 def alerts(lr):
     out = []
     from datetime import datetime, timezone
@@ -450,7 +518,8 @@ def state():
     a = alloc[-1] if alloc else None
     lr = live_rows()
     lv = live_state(lr)
-    return dict(updated=time.strftime("%Y-%m-%d %H:%M:%S"), mom_last=last, mom_history=hist, alloc_last=None if not a else dict(day=a["day"], total=a["total"], vault=a["vault"], deposits=a["deposits"], account=a["account_marked"]), fx=fx_requests(lr), fx_check=fx_check(lr), alerts=alerts(lr), live=lv, scorecard=scorecard(), skips=skips, paper=not lv["live"], ping=load("ping.json", None), app=load(os.path.join("app", "version.json"), None))
+    lv["runner"], wa = watch(lr, live_book(), beat_time(), datetime.now(KST))
+    return dict(updated=time.strftime("%Y-%m-%d %H:%M:%S"), mom_last=last, mom_history=hist, alloc_last=None if not a else dict(day=a["day"], total=a["total"], vault=a["vault"], deposits=a["deposits"], account=a["account_marked"]), fx=fx_requests(lr), fx_check=fx_check(lr), alerts=alerts(lr) + wa, live=lv, scorecard=scorecard(), skips=skips, paper=not lv["live"], ping=load("ping.json", None), app=load(os.path.join("app", "version.json"), None))
 
 
 def send_push(payload):
@@ -480,17 +549,27 @@ def send_push(payload):
     return sent
 
 
+def watch_once():
+    pushed = load("pushed.json", {})
+    lr = live_rows()
+    new = [f for f in fx_requests(lr) if f["id"] not in pushed and not f.get("done")]
+    for f in new:
+        arrow = "원화 → 달러" if f["direction"] == "KRW->USD" else "달러 → 원화"
+        body = f.get("body") or f"{arrow} {f['amount_won']:,}원 (약 ${f['amount_usd']:,.2f})."
+        n = send_push(dict(id=f["id"], title="환전 요청", body=body, url=f"{BASE}/#fx"))
+        pushed[f["id"]] = dict(at=time.strftime("%Y-%m-%d %H:%M:%S"), sent=n)
+        save("pushed.json", pushed)
+    for a in watch(lr, live_book(), beat_time(), datetime.now(KST))[1]:
+        if a["id"] not in pushed:
+            n = send_push(dict(id=a["id"], title=a["title"], body=a["body"], url=f"{BASE}/"))
+            pushed[a["id"]] = dict(at=time.strftime("%Y-%m-%d %H:%M:%S"), sent=n)
+            save("pushed.json", pushed)
+
+
 def watcher():
     while True:
         try:
-            pushed = load("pushed.json", {})
-            new = [f for f in fx_requests() if f["id"] not in pushed and not f.get("done")]
-            for f in new:
-                arrow = "원화 → 달러" if f["direction"] == "KRW->USD" else "달러 → 원화"
-                body = f.get("body") or f"{arrow} {f['amount_won']:,}원 (약 ${f['amount_usd']:,.2f})."
-                n = send_push(dict(id=f["id"], title="환전 요청", body=body, url=f"{BASE}/#fx"))
-                pushed[f["id"]] = dict(at=time.strftime("%Y-%m-%d %H:%M:%S"), sent=n)
-                save("pushed.json", pushed)
+            watch_once()
         except Exception:
             pass
         time.sleep(60)
